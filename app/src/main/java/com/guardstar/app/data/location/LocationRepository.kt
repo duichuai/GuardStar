@@ -75,48 +75,59 @@ class LocationRepository(
     suspend fun flush(): Unit = withContext(Dispatchers.IO) {
         // 串行化 flush，避免服务循环与 WorkManager 并发取到同一批 pending 记录。
         flushMutex.withLock {
-            val batch = store.pending(BATCH_SIZE)
-            if (batch.isEmpty()) {
-                updatePending()
-                return@withLock
-            }
-            // 上报期间持有唤醒锁，避免设备 Doze 中断网络请求。
-            runCatching { flushWakeLock?.acquire(FLUSH_WAKELOCK_TIMEOUT_MS) }
-            try {
-                val seqs = batch.map { it.clientSeq }
-                store.markUploading(seqs)
-                runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
-                    .onSuccess { resp ->
-                        val rejected = resp.rejected.map { it.clientSeq }.toSet()
-                        val accepted = seqs.filterNot { rejected.contains(it) }
-                        store.delete(accepted)
-                        store.delete(rejected.toList())
-                        _status.update {
-                            it.copy(
-                                lastUploadAt = System.currentTimeMillis(),
-                                lastUploadedCount = accepted.size,
-                                lastError = null,
-                                pendingCount = store.countPending(),
-                            )
+            // 整体捕获：DB（markUploading/delete/backoff/resetToPending）或网络任何异常
+            // 都只更新 lastError，绝不让 flush 循环协程崩溃。
+            runCatching {
+                val batch = store.pending(BATCH_SIZE)
+                if (batch.isEmpty()) {
+                    updatePending()
+                    return@withLock
+                }
+                // 上报期间持有唤醒锁，避免设备 Doze 中断网络请求。
+                runCatching { flushWakeLock?.acquire(FLUSH_WAKELOCK_TIMEOUT_MS) }
+                try {
+                    val seqs = batch.map { it.clientSeq }
+                    store.markUploading(seqs)
+                    runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
+                        .onSuccess { resp ->
+                            val rejected = resp.rejected.map { it.clientSeq }.toSet()
+                            val accepted = seqs.filterNot { rejected.contains(it) }
+                            store.delete(accepted)
+                            store.delete(rejected.toList())
+                            _status.update {
+                                it.copy(
+                                    lastUploadAt = System.currentTimeMillis(),
+                                    lastUploadedCount = accepted.size,
+                                    lastError = null,
+                                    pendingCount = store.countPending(),
+                                )
+                            }
                         }
-                    }
-                    .onFailure { error ->
-                        val isAuthFailure = error is ApiException && error.status == 401
-                        if (isAuthFailure) {
-                            // 凭证失效：不应用退避，重置为可立即上报，重新登录后即可补传。
-                            store.resetToPending(seqs)
-                        } else {
-                            store.backoff(seqs, System.currentTimeMillis())
+                        .onFailure { error ->
+                            val isAuthFailure = error is ApiException && error.status == 401
+                            if (isAuthFailure) {
+                                // 凭证失效：不应用退避，重置为可立即上报，重新登录后即可补传。
+                                store.resetToPending(seqs)
+                            } else {
+                                store.backoff(seqs, System.currentTimeMillis())
+                            }
+                            _status.update {
+                                it.copy(
+                                    lastError = if (error is ApiException) error.message else "网络错误",
+                                    pendingCount = store.countPending(),
+                                )
+                            }
                         }
-                        _status.update {
-                            it.copy(
-                                lastError = if (error is ApiException) error.message else "网络错误",
-                                pendingCount = store.countPending(),
-                            )
-                        }
-                    }
-            } finally {
-                runCatching { flushWakeLock?.takeIf { it.isHeld }?.release() }
+                } finally {
+                    runCatching { flushWakeLock?.takeIf { it.isHeld }?.release() }
+                }
+            }.onFailure { error ->
+                _status.update {
+                    it.copy(
+                        lastError = if (error is ApiException) error.message else "上报队列异常：${error.message}",
+                        pendingCount = runCatching { store.countPending() }.getOrDefault(it.pendingCount),
+                    )
+                }
             }
         }
     }
