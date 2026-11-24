@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.os.HandlerThread
 import com.guardstar.app.data.location.QueuePoint
@@ -124,6 +125,9 @@ class LocationCollector(
     }
 
     private fun handle(location: Location, fromLastKnown: Boolean = false) {
+        // 0. 安全过滤：丢弃模拟定位（守护场景下伪造位置会误导监护人）。
+        if (isMock(location)) return
+
         // 1. 过期缓存定位丢弃（系统可能返回很旧的 last known）
         val ageMs = System.currentTimeMillis() - location.time
         val staleLimit = if (fromLastKnown) LAST_KNOWN_STALE_MS else STALE_MS
@@ -201,6 +205,15 @@ class LocationCollector(
         val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else 50
         return pct to (plugged != 0)
     }
+
+    @Suppress("DEPRECATION")
+    private fun isMock(location: Location): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            location.isMock
+        } else {
+            location.isFromMockProvider
+        }
+    }.getOrDefault(false)
 
     private companion object {
         const val DEFAULT_INTERVAL_MS = 5 * 60 * 1000L
