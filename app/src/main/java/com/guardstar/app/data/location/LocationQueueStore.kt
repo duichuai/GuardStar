@@ -88,9 +88,10 @@ class LocationQueueStore(context: Context) {
     }
 
     fun countPending(): Int {
+        val now = System.currentTimeMillis()
         helper.readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM $TABLE WHERE $COL_STATUS = $STATUS_PENDING",
-            null
+            "SELECT COUNT(*) FROM $TABLE WHERE $COL_STATUS = $STATUS_PENDING AND $COL_NEXT_ATTEMPT_AT <= ?",
+            arrayOf(now.toString()),
         ).use { c ->
             return if (c.moveToFirst()) c.getInt(0) else 0
         }
