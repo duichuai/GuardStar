@@ -306,6 +306,22 @@ fun WardHomeScreen(
                                     color = MaterialTheme.colorScheme.error,
                                 )
                             }
+                            // 长时间未采集到新位置：覆盖静止 15min 间隔 + 缓冲，提示用户移至开阔处。
+                            val pointAgeSec = locStatus.lastPoint?.let { p ->
+                                runCatching {
+                                    val t = java.time.OffsetDateTime.parse(p.recordedAt)
+                                        .toInstant().toEpochMilli()
+                                    ((System.currentTimeMillis() - t) / 1000).toInt()
+                                }.getOrNull()
+                            }
+                            if (locStatus.running && (pointAgeSec == null || pointAgeSec > 20 * 60)) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "长时间未获取到新位置，可能处于室内或信号弱区，建议移至开阔处",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
                             if (!locStatus.locationAvailable) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
