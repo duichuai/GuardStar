@@ -101,7 +101,13 @@ class LocationRepository(
                         }
                     }
                     .onFailure { error ->
-                        store.backoff(seqs, System.currentTimeMillis())
+                        val isAuthFailure = error is ApiException && error.status == 401
+                        if (isAuthFailure) {
+                            // 凭证失效：不应用退避，重置为可立即上报，重新登录后即可补传。
+                            store.resetToPending(seqs)
+                        } else {
+                            store.backoff(seqs, System.currentTimeMillis())
+                        }
                         _status.update {
                             it.copy(
                                 lastError = if (error is ApiException) error.message else "网络错误",

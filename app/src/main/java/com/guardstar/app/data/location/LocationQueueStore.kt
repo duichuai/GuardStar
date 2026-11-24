@@ -107,6 +107,22 @@ class LocationQueueStore(context: Context) {
         )
     }
 
+    /**
+     * 认证失败（401）时使用：将 uploading 记录直接重置为可立即上报的 pending，
+     * 不应用指数退避、不递增 attempts。重新登录后可立即补传，避免等待退避到期。
+     */
+    fun resetToPending(clientSeqs: List<Int>) {
+        if (clientSeqs.isEmpty()) return
+        val placeholders = clientSeqs.joinToString(",") { "?" }
+        val now = System.currentTimeMillis().toString()
+        val args = (listOf(now) + clientSeqs.map { it.toString() }).toTypedArray()
+        helper.writableDatabase.execSQL(
+            "UPDATE $TABLE SET $COL_STATUS = $STATUS_PENDING, $COL_NEXT_ATTEMPT_AT = ? " +
+                "WHERE $COL_CLIENT_SEQ IN ($placeholders)",
+            args,
+        )
+    }
+
     /** 删除超过保留期（默认 24 小时）的队列数据。 */
     fun purgeOlderThan(cutoffMs: Long): Int {
         return helper.writableDatabase.delete(
