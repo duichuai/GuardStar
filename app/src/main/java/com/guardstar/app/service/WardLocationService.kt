@@ -14,6 +14,7 @@ import com.guardstar.app.GuardStarApp
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.location.DeviceStatusRequest
 import com.guardstar.app.data.location.LocationApi
+import com.guardstar.app.data.location.LocationFlushWorker
 import com.guardstar.app.data.location.LocationRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -213,6 +214,8 @@ class WardLocationService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, WardLocationService::class.java))
+            // 停止后立即触发一次补传，避免残余队列丢失。
+            LocationFlushWorker.flushOnce(context)
         }
 
         /** 切换 SOS 采集模式；若服务未运行则先启动。 */
