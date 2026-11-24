@@ -70,7 +70,7 @@ class WardLocationService : Service() {
         if (!started) {
             started = true
             repo.setRunning(true)
-            collector.start(COLLECT_INTERVAL_MS, 0f)
+            collector.start(COLLECT_INTERVAL_MS)
             startFlushLoop()
             startStatusLoop()
         }
@@ -154,7 +154,12 @@ class WardLocationService : Service() {
 
     private fun isNetworkAvailable(): Boolean {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        return runCatching { cm.activeNetworkInfo?.isConnected == true }.getOrDefault(false)
+        return runCatching {
+            val network = cm.activeNetwork ?: return@runCatching false
+            val caps = cm.getNetworkCapabilities(network) ?: return@runCatching false
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }.getOrDefault(false)
     }
 
     /** Android 13+ 通知权限；低版本默认开启。 */
