@@ -1,10 +1,12 @@
 package com.guardstar.app.ui
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -14,6 +16,7 @@ import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
+import com.guardstar.app.service.WardLocationService
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.login.LoginScreen
 import com.guardstar.app.ui.role.RoleSelectScreen
@@ -33,6 +36,7 @@ fun GuardStarApp(
     locationRepository: LocationRepository,
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
     var role by remember { mutableStateOf(roleStore.loadRole()) }
 
     val startDestination = when {
@@ -49,6 +53,8 @@ fun GuardStarApp(
     }
 
     fun logout() {
+        // 退出登录时停止被守护端定位服务，避免带着失效凭证持续重传。
+        runCatching { context.stopService(Intent(context, WardLocationService::class.java)) }
         session.clear()
         navController.navigate(ROUTE_ROLE) {
             popUpTo(0) { inclusive = true }

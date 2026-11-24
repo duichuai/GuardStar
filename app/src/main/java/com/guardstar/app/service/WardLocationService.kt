@@ -104,6 +104,11 @@ class WardLocationService : Service() {
         flushJob = scope.launch {
             var lastFlush = 0L
             while (isActive) {
+                // 登出或凭证失效（token 刷新失败已清 session）时停止服务，避免无效重传。
+                if (!session.isLoggedIn()) {
+                    stopSelf()
+                    return@launch
+                }
                 val pending = repo.status.value.pendingCount
                 val now = System.currentTimeMillis()
                 val locationOk = isLocationAvailable()
