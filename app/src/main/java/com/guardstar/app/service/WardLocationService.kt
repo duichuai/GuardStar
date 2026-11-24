@@ -119,13 +119,18 @@ class WardLocationService : Service() {
                 val interval = if (sosMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
                 val threshold = if (sosMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
                 val due = pending >= threshold || now - lastFlush >= interval
+                var flushed = false
                 if (due && isNetworkAvailable()) {
                     repo.flush()
                     lastFlush = now
+                    flushed = true
                 }
                 // 每轮更新通知文案，展示待上报数。
                 updateNotificationText(pending, locationOk)
-                delay(if (sosMode) SOS_TICK_MS else TICK_MS)
+                // flush 后仍有待上报点（积压未排空），缩短下一轮延迟以快速排空；否则按正常轮询间隔。
+                val remaining = repo.status.value.pendingCount
+                val tick = if (sosMode) SOS_TICK_MS else TICK_MS
+                delay(if (flushed && remaining > 0) BACKLOG_DRAIN_TICK_MS else tick)
             }
         }
     }
@@ -229,6 +234,8 @@ class WardLocationService : Service() {
         private const val SOS_FLUSH_INTERVAL_MS = 15 * 1000L
         private const val SOS_FLUSH_THRESHOLD = 5
         private const val TICK_MS = 10_000L
+        // flush 后仍有积压待上报点时的下一轮延迟，快速排空积压。
+        private const val BACKLOG_DRAIN_TICK_MS = 1_000L
         private const val SOS_TICK_MS = 5_000L
         private const val STATUS_INTERVAL_MS = 15 * 60 * 1000L
 
