@@ -53,6 +53,7 @@ import androidx.core.content.ContextCompat
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.model.RelationSummary
 import com.guardstar.app.data.relation.RelationApi
+import com.guardstar.app.service.BatteryOptimize
 import com.guardstar.app.service.WardLocationService
 import kotlinx.coroutines.launch
 
@@ -283,6 +284,23 @@ fun WardHomeScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text("停止共享")
+                                }
+                                if (!BatteryOptimize.isExempt(context)) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        text = "未加入电池优化白名单，后台定位可能被系统限制",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    TextButton(
+                                        onClick = {
+                                            runCatching {
+                                                context.startActivity(BatteryOptimize.requestExemptionIntent(context))
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text("前往设置加入白名单") }
                                 }
                             } else {
                                 Button(

@@ -81,6 +81,11 @@ class WardLocationService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // 用户从最近任务划掉：保持 START_STICKY 重启语义，不主动停止定位。
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         collector.stop()
         flushJob?.cancel()

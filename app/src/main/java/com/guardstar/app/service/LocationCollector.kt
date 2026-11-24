@@ -50,11 +50,24 @@ class LocationCollector(
     @Volatile private var stationaryCount: Int = 0
     @Volatile private var sosMode: Boolean = false
 
-    private val listener = object : LocationListener {
+    private val listener: LocationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) = handle(location)
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderEnabled(provider: String) {
+            // 服务运行期间用户打开 GPS/网络定位，立即注册该提供者。
+            runCatching {
+                if (locationManager.isProviderEnabled(provider)) {
+                    locationManager.requestLocationUpdates(
+                        provider,
+                        currentIntervalMs,
+                        0f,
+                        listener,
+                        handlerThread.looper,
+                    )
+                }
+            }
+        }
         override fun onProviderDisabled(provider: String) = Unit
     }
 
