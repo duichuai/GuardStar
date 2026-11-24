@@ -21,6 +21,7 @@ data class LocationStatus(
     val running: Boolean = false,
     val pendingCount: Int = 0,
     val lastUploadAt: Long? = null,
+    val lastUploadedCount: Int = 0,
     val lastError: String? = null,
     val locationAvailable: Boolean = true,
     val lastPoint: QueuePoint? = null,
@@ -88,6 +89,7 @@ class LocationRepository(
                         _status.update {
                             it.copy(
                                 lastUploadAt = System.currentTimeMillis(),
+                                lastUploadedCount = accepted.size,
                                 lastError = null,
                                 pendingCount = store.countPending(),
                             )

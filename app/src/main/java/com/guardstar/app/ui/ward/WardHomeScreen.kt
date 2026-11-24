@@ -267,7 +267,8 @@ fun WardHomeScreen(
                             locStatus.lastUploadAt?.let { at ->
                                 val ago = (System.currentTimeMillis() - at) / 1000
                                 Text(
-                                    text = "最近上报：${ago}秒前",
+                                    text = "最近上报：${ago}秒前" +
+                                        if (locStatus.lastUploadedCount > 0) "（${locStatus.lastUploadedCount} 条）" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -324,6 +325,16 @@ fun WardHomeScreen(
                             }
                             Spacer(Modifier.height(12.dp))
                             if (locStatus.running) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch { runCatching { locationRepository.flush() } }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = locStatus.pendingCount > 0,
+                                ) {
+                                    Text("立即上报${if (locStatus.pendingCount > 0) "（${locStatus.pendingCount} 条）" else ""}")
+                                }
+                                Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = { WardLocationService.stop(context) },
                                     modifier = Modifier.fillMaxWidth(),
