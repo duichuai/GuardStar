@@ -73,6 +73,8 @@ class LocationCollector(
     }
 
     fun start(intervalMs: Long = DEFAULT_INTERVAL_MS, minDistanceM: Float = 0f) {
+        // 先移除旧注册，保证重复调用 start 不会产生重复回调。
+        runCatching { locationManager.removeUpdates(listener) }
         currentIntervalMs = intervalMs
         register(currentIntervalMs, minDistanceM)
         emitLastKnown()

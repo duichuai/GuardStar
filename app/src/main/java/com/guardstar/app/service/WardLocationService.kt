@@ -43,6 +43,7 @@ class WardLocationService : Service() {
     private var statusJob: Job? = null
 
     @Volatile private var sosMode: Boolean = false
+    @Volatile private var started: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -66,10 +67,13 @@ class WardLocationService : Service() {
             startForeground(Notifications.ID_WARD_LOCATION, notification)
         }
 
-        repo.setRunning(true)
-        collector.start(COLLECT_INTERVAL_MS, 0f)
-        startFlushLoop()
-        startStatusLoop()
+        if (!started) {
+            started = true
+            repo.setRunning(true)
+            collector.start(COLLECT_INTERVAL_MS, 0f)
+            startFlushLoop()
+            startStatusLoop()
+        }
 
         // 支持通过 Intent 切换 SOS 采集模式（30 秒间隔）。
         if (intent?.hasExtra(EXTRA_SOS) == true) {
