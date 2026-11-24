@@ -79,6 +79,8 @@ class WardLocationService : Service() {
         if (intent?.hasExtra(EXTRA_SOS) == true) {
             sosMode = intent.getBooleanExtra(EXTRA_SOS, false)
             collector.setSosMode(sosMode)
+            // SOS 模式切换立即上报状态，避免监护人等待下一次 15 分钟周期上报。
+            scope.launch { reportStatus() }
         }
 
         return START_STICKY
@@ -182,6 +184,7 @@ class WardLocationService : Service() {
                     locationPermission = locationPermissionState(),
                     backgroundRestricted = isBackgroundRestricted(),
                     reportingPaused = false,
+                    sosMode = sosMode,
                 ),
             )
         }

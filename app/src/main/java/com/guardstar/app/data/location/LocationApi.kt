@@ -36,6 +36,7 @@ data class DeviceStatusRequest(
     val locationPermission: String,
     val backgroundRestricted: Boolean,
     val reportingPaused: Boolean,
+    val sosMode: Boolean,
 )
 
 class LocationApi(private val api: ApiClient) {
