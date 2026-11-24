@@ -172,10 +172,15 @@ class LocationCollector(
             charging = battery.second,
             backfill = fromLastKnown && ageMs > STALE_MS,
         )
-        lastLat = location.latitude
-        lastLng = location.longitude
-        lastEmitAt = System.currentTimeMillis()
-        scope.launch { runCatching { onPoint(point) } }
+        // 去重状态在入库成功后再更新：若 onPoint 失败，保留旧状态以便下一个点重试，
+        // 避免入库失败 + 误判重复导致连续丢点。
+        scope.launch {
+            runCatching { onPoint(point) }.onSuccess {
+                lastLat = location.latitude
+                lastLng = location.longitude
+                lastEmitAt = System.currentTimeMillis()
+            }
+        }
     }
 
     /** 根据最近一次位移调整采集间隔，仅在变化时重新注册。SOS 模式下不调整。 */
