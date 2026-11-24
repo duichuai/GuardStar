@@ -87,6 +87,16 @@ class LocationQueueStore(context: Context) {
         }
     }
 
+    /**
+     * 启动时调用：将所有 uploading 状态（status=1）的记录重置为 pending。
+     * 处理进程在 markUploading 后、delete/backoff 前被杀导致的孤儿记录。
+     */
+    fun resetUploading() {
+        helper.writableDatabase.execSQL(
+            "UPDATE $TABLE SET $COL_STATUS = $STATUS_PENDING WHERE $COL_STATUS = $STATUS_UPLOADING"
+        )
+    }
+
     /** 删除超过保留期（默认 24 小时）的队列数据。 */
     fun purgeOlderThan(cutoffMs: Long): Int {
         return helper.writableDatabase.delete(

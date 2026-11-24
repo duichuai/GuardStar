@@ -12,8 +12,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.math.pow
 
 /** 位置共享状态，供 UI 观察。 */
 data class LocationStatus(
@@ -30,9 +31,15 @@ class LocationRepository(
     private val flushWakeLock: PowerManager.WakeLock? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val flushMutex = Mutex()
 
     private val _status = MutableStateFlow(LocationStatus())
     val status: StateFlow<LocationStatus> = _status.asStateFlow()
+
+    init {
+        // 恢复上次进程崩溃前可能遗留的 uploading 记录。
+        runCatching { store.resetUploading() }
+    }
 
     fun setRunning(running: Boolean) {
         _status.update { it.copy(running = running, lastError = null) }
@@ -51,41 +58,44 @@ class LocationRepository(
      * rejected 的丢弃（服务端判定为过期/非法）；网络失败则按退避回退。
      */
     suspend fun flush(): Unit = withContext(Dispatchers.IO) {
-        val batch = store.pending(BATCH_SIZE)
-        if (batch.isEmpty()) {
-            updatePending()
-            return@withContext
-        }
-        // 上报期间持有唤醒锁，避免设备 Doze 中断网络请求。
-        runCatching { flushWakeLock?.acquire(FLUSH_WAKELOCK_TIMEOUT_MS) }
-        try {
-            val seqs = batch.map { it.clientSeq }
-            store.markUploading(seqs)
-            runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
-                .onSuccess { resp ->
-                    val rejected = resp.rejected.map { it.clientSeq }.toSet()
-                    val accepted = seqs.filterNot { rejected.contains(it) }
-                    store.delete(accepted)
-                    store.delete(rejected.toList())
-                    _status.update {
-                        it.copy(
-                            lastUploadAt = System.currentTimeMillis(),
-                            lastError = null,
-                            pendingCount = store.countPending(),
-                        )
+        // 串行化 flush，避免服务循环与 WorkManager 并发取到同一批 pending 记录。
+        flushMutex.withLock {
+            val batch = store.pending(BATCH_SIZE)
+            if (batch.isEmpty()) {
+                updatePending()
+                return@withLock
+            }
+            // 上报期间持有唤醒锁，避免设备 Doze 中断网络请求。
+            runCatching { flushWakeLock?.acquire(FLUSH_WAKELOCK_TIMEOUT_MS) }
+            try {
+                val seqs = batch.map { it.clientSeq }
+                store.markUploading(seqs)
+                runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
+                    .onSuccess { resp ->
+                        val rejected = resp.rejected.map { it.clientSeq }.toSet()
+                        val accepted = seqs.filterNot { rejected.contains(it) }
+                        store.delete(accepted)
+                        store.delete(rejected.toList())
+                        _status.update {
+                            it.copy(
+                                lastUploadAt = System.currentTimeMillis(),
+                                lastError = null,
+                                pendingCount = store.countPending(),
+                            )
+                        }
                     }
-                }
-                .onFailure { error ->
-                    store.backoff(seqs, System.currentTimeMillis() + BACKOFF_MS)
-                    _status.update {
-                        it.copy(
-                            lastError = if (error is ApiException) error.message else "网络错误",
-                            pendingCount = store.countPending(),
-                        )
+                    .onFailure { error ->
+                        store.backoff(seqs, System.currentTimeMillis() + BACKOFF_MS)
+                        _status.update {
+                            it.copy(
+                                lastError = if (error is ApiException) error.message else "网络错误",
+                                pendingCount = store.countPending(),
+                            )
+                        }
                     }
-                }
-        } finally {
-            runCatching { flushWakeLock?.takeIf { it.isHeld }?.release() }
+            } finally {
+                runCatching { flushWakeLock?.takeIf { it.isHeld }?.release() }
+            }
         }
     }
 
