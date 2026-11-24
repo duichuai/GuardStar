@@ -14,7 +14,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val app = context.applicationContext as GuardStarApp
-        if (app.roleStore.loadRole() == UserRole.WARD) {
+        // 仅在被守护端且已登录时恢复服务，否则启动后会因未登录立即停止。
+        if (app.roleStore.loadRole() == UserRole.WARD && app.session.isLoggedIn()) {
             WardLocationService.start(context)
         }
     }
