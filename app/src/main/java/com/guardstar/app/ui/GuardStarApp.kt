@@ -27,6 +27,7 @@ import com.guardstar.app.service.WardLocationService
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.guardian.GuardianMapScreen
 import com.guardstar.app.ui.guardian.FenceScreen
+import com.guardstar.app.ui.guardian.TrackScreen
 import com.guardstar.app.ui.login.LoginScreen
 import com.guardstar.app.ui.role.RoleSelectScreen
 import com.guardstar.app.ui.ward.WardHomeScreen
@@ -37,6 +38,7 @@ private const val ROUTE_WARD = "ward_home"
 private const val ROUTE_GUARDIAN = "guardian_home"
 private const val ROUTE_GUARDIAN_MAP = "guardian_map/{relationId}/{wardDeviceId}/{wardNickname}"
 private const val ROUTE_GUARDIAN_FENCES = "guardian_fences/{relationId}/{wardNickname}"
+private const val ROUTE_GUARDIAN_TRACK = "guardian_track/{relationId}/{wardNickname}"
 
 @Composable
 fun GuardStarApp(
@@ -109,6 +111,7 @@ fun GuardStarApp(
                 eventApi = eventApi,
                 sosApi = sosApi,
                 fenceApi = fenceApi,
+                locationApi = locationApi,
                 onSelectRelation = { relation ->
                     val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
                     navController.navigate(
@@ -118,6 +121,10 @@ fun GuardStarApp(
                 onManageFences = { relation ->
                     val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
                     navController.navigate("guardian_fences/${relation.relationId}/$nickname")
+                },
+                onViewTrack = { relation ->
+                    val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
+                    navController.navigate("guardian_track/${relation.relationId}/$nickname")
                 },
                 onLogout = { logout() },
             )
@@ -150,6 +157,20 @@ fun GuardStarApp(
                 relationId = backStackEntry.arguments?.getString("relationId").orEmpty(),
                 wardNickname = Uri.decode(backStackEntry.arguments?.getString("wardNickname")).orEmpty(),
                 fenceApi = fenceApi,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = ROUTE_GUARDIAN_TRACK,
+            arguments = listOf(
+                navArgument("relationId") { type = NavType.StringType },
+                navArgument("wardNickname") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            TrackScreen(
+                relationId = backStackEntry.arguments?.getString("relationId").orEmpty(),
+                wardNickname = Uri.decode(backStackEntry.arguments?.getString("wardNickname")).orEmpty(),
+                locationApi = locationApi,
                 onBack = { navController.popBackStack() },
             )
         }

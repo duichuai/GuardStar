@@ -65,8 +65,10 @@ fun GuardianHomeScreen(
     eventApi: EventApi,
     sosApi: SosApi,
     fenceApi: FenceApi,
+    locationApi: com.guardstar.app.data.location.LocationApi,
     onSelectRelation: (RelationSummary) -> Unit,
     onManageFences: (RelationSummary) -> Unit,
+    onViewTrack: (RelationSummary) -> Unit,
     onLogout: () -> Unit,
 ) {
     var relations by remember { mutableStateOf<List<RelationSummary>>(emptyList()) }
@@ -246,6 +248,10 @@ fun GuardianHomeScreen(
                                     onClick = { onManageFences(relation) },
                                     modifier = Modifier.weight(1f),
                                 ) { Text("围栏管理") }
+                                OutlinedButton(
+                                    onClick = { onViewTrack(relation) },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("历史轨迹") }
                             }
                         }
                         Spacer(Modifier.height(8.dp))

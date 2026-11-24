@@ -84,8 +84,17 @@ data class TrackPoint(
 )
 
 @Serializable
+data class Stay(
+    val lat: Double,
+    val lng: Double,
+    val startAt: String = "",
+    val endAt: String = "",
+)
+
+@Serializable
 data class TrackResult(
     val points: List<TrackPoint> = emptyList(),
+    val stays: List<Stay> = emptyList(),
     val simplified: Boolean = false,
     val rawCount: Int = 0,
 )
