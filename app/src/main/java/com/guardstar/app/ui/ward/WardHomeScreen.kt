@@ -272,6 +272,32 @@ fun WardHomeScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                            locStatus.lastPoint?.let { p ->
+                                val agoSec = runCatching {
+                                    val t = java.time.OffsetDateTime.parse(p.recordedAt)
+                                        .toInstant().toEpochMilli()
+                                    (System.currentTimeMillis() - t) / 1000
+                                }.getOrNull()
+                                val lat = String.format("%.5f", p.lat)
+                                val lng = String.format("%.5f", p.lng)
+                                val acc = String.format("%.0f", p.accuracyM)
+                                val src = when (p.source) {
+                                    "gps" -> "GPS"
+                                    "network" -> "网络"
+                                    else -> p.source
+                                }
+                                val backfill = if (p.backfill) "（补传）" else ""
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = buildString {
+                                        append("最近采集：")
+                                        append(agoSec?.let { "${it}秒前 " } ?: "")
+                                        append("$lat, $lng · 精度${acc}m · $src$backfill")
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             locStatus.lastError?.let { msg ->
                                 Text(
                                     text = "上报异常：$msg",

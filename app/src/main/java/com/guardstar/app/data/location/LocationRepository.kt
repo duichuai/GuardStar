@@ -23,6 +23,7 @@ data class LocationStatus(
     val lastUploadAt: Long? = null,
     val lastError: String? = null,
     val locationAvailable: Boolean = true,
+    val lastPoint: QueuePoint? = null,
 )
 
 class LocationRepository(
@@ -51,7 +52,10 @@ class LocationRepository(
     }
 
     suspend fun enqueue(point: QueuePoint): Long = withContext(Dispatchers.IO) {
-        store.enqueue(point).also { updatePending() }
+        store.enqueue(point).also {
+            _status.update { it.copy(lastPoint = point) }
+            updatePending()
+        }
     }
 
     private fun updatePending() {
