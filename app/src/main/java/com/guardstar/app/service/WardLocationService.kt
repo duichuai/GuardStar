@@ -101,6 +101,8 @@ class WardLocationService : Service() {
             while (isActive) {
                 val pending = repo.status.value.pendingCount
                 val now = System.currentTimeMillis()
+                val locationOk = isLocationAvailable()
+                repo.setLocationAvailable(locationOk)
                 val interval = if (sosMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
                 val threshold = if (sosMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
                 val due = pending >= threshold || now - lastFlush >= interval
@@ -109,16 +111,32 @@ class WardLocationService : Service() {
                     lastFlush = now
                 }
                 // 每轮更新通知文案，展示待上报数。
-                updateNotificationText(pending)
+                updateNotificationText(pending, locationOk)
                 delay(if (sosMode) SOS_TICK_MS else TICK_MS)
             }
         }
     }
 
-    private fun updateNotificationText(pending: Int) {
-        val prefix = if (sosMode) "SOS 紧急定位中" else "正在共享位置"
+    private fun updateNotificationText(pending: Int, locationOk: Boolean) {
+        val prefix = when {
+            !locationOk -> "定位不可用，请开启系统定位"
+            sosMode -> "SOS 紧急定位中"
+            else -> "正在共享位置"
+        }
         val text = if (pending > 0) "$prefix · 待上报 $pending 条" else prefix
         Notifications.updateLocationNotification(this, text)
+    }
+
+    /** 定位可用 = 已授予精确定位权限且至少一个定位提供者开启。 */
+    private fun isLocationAvailable(): Boolean {
+        val permOk = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!permOk) return false
+        val lm = getSystemService(LOCATION_SERVICE) as android.location.LocationManager
+        return runCatching {
+            lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        }.getOrDefault(false)
     }
 
     private fun isNetworkAvailable(): Boolean {

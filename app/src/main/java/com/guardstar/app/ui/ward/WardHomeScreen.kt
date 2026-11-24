@@ -1,8 +1,10 @@
 package com.guardstar.app.ui.ward
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -276,6 +278,23 @@ fun WardHomeScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )
+                            }
+                            if (!locStatus.locationAvailable) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "系统定位未开启或定位权限被收回，当前无法采集位置",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                TextButton(
+                                    onClick = {
+                                        runCatching {
+                                            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("前往开启系统定位") }
                             }
                             Spacer(Modifier.height(12.dp))
                             if (locStatus.running) {
