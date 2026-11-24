@@ -12,6 +12,7 @@ import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.role.UserRole
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
+import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.login.LoginScreen
@@ -29,6 +30,7 @@ fun GuardStarApp(
     roleStore: RoleStore,
     authApi: AuthApi,
     relationApi: RelationApi,
+    locationRepository: LocationRepository,
 ) {
     val navController = rememberNavController()
     var role by remember { mutableStateOf(roleStore.loadRole()) }
@@ -75,6 +77,7 @@ fun GuardStarApp(
         composable(ROUTE_WARD) {
             WardHomeScreen(
                 relationApi = relationApi,
+                locationRepository = locationRepository,
                 onLogout = { logout() },
             )
         }

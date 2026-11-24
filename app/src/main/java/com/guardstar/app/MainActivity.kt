@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
                     roleStore = app.roleStore,
                     authApi = app.authApi,
                     relationApi = app.relationApi,
+                    locationRepository = app.locationRepository,
                 )
             }
         }

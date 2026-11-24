@@ -1,0 +1,151 @@
+package com.guardstar.app.service
+
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import androidx.core.content.ContextCompat
+import com.guardstar.app.GuardStarApp
+import com.guardstar.app.core.session.SessionStore
+import com.guardstar.app.data.location.DeviceStatusRequest
+import com.guardstar.app.data.location.LocationApi
+import com.guardstar.app.data.location.LocationRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * 被守护端位置共享前台服务。
+ * - 启动 LocationCollector 按 5 分钟间隔采集并写入本地队列
+ * - 每 60 秒触发一次批量上报（队列达到 20 条或时间到）
+ * - 周期性上报设备状态（电量/权限）
+ */
+class WardLocationService : Service() {
+
+    private lateinit var app: GuardStarApp
+    private lateinit var repo: LocationRepository
+    private lateinit var locationApi: LocationApi
+    private lateinit var session: SessionStore
+    private lateinit var collector: LocationCollector
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var flushJob: Job? = null
+    private var statusJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        app = application as GuardStarApp
+        repo = app.locationRepository
+        locationApi = app.locationApi
+        session = app.session
+        collector = LocationCollector(this) { point -> repo.enqueue(point) }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Notifications.ensureChannels(this)
+        val notification = Notifications.locationNotification(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                Notifications.ID_WARD_LOCATION,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+        } else {
+            startForeground(Notifications.ID_WARD_LOCATION, notification)
+        }
+
+        repo.setRunning(true)
+        collector.start(COLLECT_INTERVAL_MS, 0f)
+        startFlushLoop()
+        startStatusLoop()
+
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        collector.stop()
+        flushJob?.cancel()
+        statusJob?.cancel()
+        scope.coroutineContext[Job]?.cancel()
+        repo.setRunning(false)
+        super.onDestroy()
+    }
+
+    private fun startFlushLoop() {
+        flushJob = scope.launch {
+            var lastFlush = 0L
+            while (isActive) {
+                val pending = repo.status.value.pendingCount
+                val now = System.currentTimeMillis()
+                if (pending >= FLUSH_THRESHOLD || now - lastFlush >= FLUSH_INTERVAL_MS) {
+                    repo.flush()
+                    lastFlush = now
+                }
+                delay(10_000)
+            }
+        }
+    }
+
+    private fun startStatusLoop() {
+        statusJob = scope.launch {
+            reportStatus()
+            while (isActive) {
+                delay(STATUS_INTERVAL_MS)
+                reportStatus()
+            }
+        }
+    }
+
+    private suspend fun reportStatus() {
+        runCatching {
+            locationApi.reportStatus(
+                session.deviceId,
+                DeviceStatusRequest(
+                    battery = readBatteryPct(),
+                    charging = isCharging(),
+                    locationPermission = "granted_precise",
+                    backgroundRestricted = false,
+                    reportingPaused = false,
+                ),
+            )
+        }
+    }
+
+    private fun readBatteryPct(): Int {
+        val filter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val status = registerReceiver(null, filter) ?: return 50
+        val level = status.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+        val scale = status.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+        return if (level >= 0 && scale > 0) level * 100 / scale else 50
+    }
+
+    private fun isCharging(): Boolean {
+        val filter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val status = registerReceiver(null, filter) ?: return false
+        return status.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0
+    }
+
+    companion object {
+        private const val COLLECT_INTERVAL_MS = 5 * 60 * 1000L
+        private const val FLUSH_INTERVAL_MS = 60 * 1000L
+        private const val FLUSH_THRESHOLD = 20
+        private const val STATUS_INTERVAL_MS = 15 * 60 * 1000L
+
+        fun start(context: Context) {
+            val intent = Intent(context, WardLocationService::class.java)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, WardLocationService::class.java))
+        }
+    }
+}

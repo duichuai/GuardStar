@@ -5,6 +5,9 @@ import com.guardstar.app.core.net.ApiClient
 import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
+import com.guardstar.app.data.location.LocationApi
+import com.guardstar.app.data.location.LocationQueueStore
+import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
 
 class GuardStarApp : Application() {
@@ -17,6 +20,10 @@ class GuardStarApp : Application() {
         private set
     lateinit var relationApi: RelationApi
         private set
+    lateinit var locationApi: LocationApi
+        private set
+    lateinit var locationRepository: LocationRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -25,5 +32,8 @@ class GuardStarApp : Application() {
         val api = ApiClient(session)
         authApi = AuthApi(api, session)
         relationApi = RelationApi(api, session)
+        locationApi = LocationApi(api)
+        locationRepository = LocationRepository(LocationQueueStore(this), locationApi, session)
+        locationRepository.schedulePurge()
     }
 }
