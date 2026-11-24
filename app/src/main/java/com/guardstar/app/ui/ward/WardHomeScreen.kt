@@ -91,6 +91,12 @@ fun WardHomeScreen(
             }
         }.toTypedArray()
     }
+    // bgLauncher 先于 baseLauncher 定义，使基础权限回调可引用它。
+    val bgLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) WardLocationService.start(context)
+    }
     val baseLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
@@ -98,11 +104,18 @@ fun WardHomeScreen(
         hasNotifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             result[Manifest.permission.POST_NOTIFICATIONS] == true
         } else true
-    }
-    val bgLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) WardLocationService.start(context)
+        // 基础权限授予后自动继续流程（申请后台定位或直接启动服务），
+        // 避免用户需要再次点击「开始共享」。
+        if (hasFineLocation && hasNotifications) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            } else {
+                WardLocationService.start(context)
+            }
+        }
     }
 
     fun startSharing() {
