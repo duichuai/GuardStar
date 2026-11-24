@@ -67,13 +67,22 @@ class LocationQueueStore(context: Context) {
         helper.writableDatabase.delete(TABLE, "$COL_CLIENT_SEQ IN ($placeholders)", args)
     }
 
-    /** 网络失败时回退为 pending，并设置下次可重试时间。 */
-    fun backoff(clientSeqs: List<Int>, nextAttemptAt: Long) {
+    /**
+     * 网络失败时回退为 pending，并按 attempts 指数退避设置下次可重试时间。
+     * 退避：30s * 2^attempts，上限 5 分钟；attempts 自增。
+     */
+    fun backoff(clientSeqs: List<Int>, nowMs: Long) {
         if (clientSeqs.isEmpty()) return
         val placeholders = clientSeqs.joinToString(",") { "?" }
-        val args = (clientSeqs.map { it.toString() } + nextAttemptAt.toString()).toTypedArray()
+        val args = (clientSeqs.map { it.toString() } + nowMs.toString()).toTypedArray()
         helper.writableDatabase.execSQL(
-            "UPDATE $TABLE SET $COL_STATUS = $STATUS_PENDING, $COL_ATTEMPTS = $COL_ATTEMPTS + 1, $COL_NEXT_ATTEMPT_AT = ? WHERE $COL_CLIENT_SEQ IN ($placeholders)",
+            """
+            UPDATE $TABLE SET
+                $COL_STATUS = $STATUS_PENDING,
+                $COL_NEXT_ATTEMPT_AT = ? + CAST(min($BACKOFF_BASE_MS * pow(2.0, $COL_ATTEMPTS), $BACKOFF_MAX_MS) AS INTEGER),
+                $COL_ATTEMPTS = $COL_ATTEMPTS + 1
+            WHERE $COL_CLIENT_SEQ IN ($placeholders)
+            """.trimIndent(),
             args,
         )
     }
@@ -167,5 +176,7 @@ class LocationQueueStore(context: Context) {
         const val COL_CREATED_AT = "created_at"
         const val STATUS_PENDING = 0
         const val STATUS_UPLOADING = 1
+        const val BACKOFF_BASE_MS = 30_000L
+        const val BACKOFF_MAX_MS = 5 * 60_000L
     }
 }

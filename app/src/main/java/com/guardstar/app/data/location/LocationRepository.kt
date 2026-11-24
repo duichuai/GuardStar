@@ -101,7 +101,7 @@ class LocationRepository(
                         }
                     }
                     .onFailure { error ->
-                        store.backoff(seqs, System.currentTimeMillis() + BACKOFF_MS)
+                        store.backoff(seqs, System.currentTimeMillis())
                         _status.update {
                             it.copy(
                                 lastError = if (error is ApiException) error.message else "网络错误",
@@ -127,7 +127,6 @@ class LocationRepository(
 
     private companion object {
         const val BATCH_SIZE = 200
-        const val BACKOFF_MS = 30 * 1000L
         const val RETENTION_MS = 24 * 60 * 60 * 1000L
         const val PURGE_INTERVAL_MS = 60 * 60 * 1000L
         const val FLUSH_WAKELOCK_TIMEOUT_MS = 30_000L
