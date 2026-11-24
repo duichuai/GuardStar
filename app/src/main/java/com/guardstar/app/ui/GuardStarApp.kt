@@ -18,6 +18,7 @@ import com.guardstar.app.core.role.UserRole
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.event.EventApi
+import com.guardstar.app.data.fence.FenceApi
 import com.guardstar.app.data.location.LocationApi
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
@@ -25,6 +26,7 @@ import com.guardstar.app.data.sos.SosApi
 import com.guardstar.app.service.WardLocationService
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.guardian.GuardianMapScreen
+import com.guardstar.app.ui.guardian.FenceScreen
 import com.guardstar.app.ui.login.LoginScreen
 import com.guardstar.app.ui.role.RoleSelectScreen
 import com.guardstar.app.ui.ward.WardHomeScreen
@@ -34,6 +36,7 @@ private const val ROUTE_LOGIN = "login"
 private const val ROUTE_WARD = "ward_home"
 private const val ROUTE_GUARDIAN = "guardian_home"
 private const val ROUTE_GUARDIAN_MAP = "guardian_map/{relationId}/{wardDeviceId}/{wardNickname}"
+private const val ROUTE_GUARDIAN_FENCES = "guardian_fences/{relationId}/{wardNickname}"
 
 @Composable
 fun GuardStarApp(
@@ -45,6 +48,7 @@ fun GuardStarApp(
     locationRepository: LocationRepository,
     sosApi: SosApi,
     eventApi: EventApi,
+    fenceApi: FenceApi,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -104,11 +108,16 @@ fun GuardStarApp(
                 relationApi = relationApi,
                 eventApi = eventApi,
                 sosApi = sosApi,
+                fenceApi = fenceApi,
                 onSelectRelation = { relation ->
                     val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
                     navController.navigate(
                         "guardian_map/${relation.relationId}/${relation.wardDeviceId}/$nickname"
                     )
+                },
+                onManageFences = { relation ->
+                    val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
+                    navController.navigate("guardian_fences/${relation.relationId}/$nickname")
                 },
                 onLogout = { logout() },
             )
@@ -126,6 +135,21 @@ fun GuardStarApp(
                 wardNickname = Uri.decode(backStackEntry.arguments?.getString("wardNickname")).orEmpty(),
                 deviceId = backStackEntry.arguments?.getString("wardDeviceId").orEmpty(),
                 locationApi = locationApi,
+                fenceApi = fenceApi,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = ROUTE_GUARDIAN_FENCES,
+            arguments = listOf(
+                navArgument("relationId") { type = NavType.StringType },
+                navArgument("wardNickname") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            FenceScreen(
+                relationId = backStackEntry.arguments?.getString("relationId").orEmpty(),
+                wardNickname = Uri.decode(backStackEntry.arguments?.getString("wardNickname")).orEmpty(),
+                fenceApi = fenceApi,
                 onBack = { navController.popBackStack() },
             )
         }

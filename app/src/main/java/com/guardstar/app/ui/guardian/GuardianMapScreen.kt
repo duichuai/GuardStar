@@ -51,6 +51,8 @@ import com.amap.api.maps.MapView
 import com.amap.api.maps.model.CircleOptions
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MarkerOptions
+import com.guardstar.app.data.fence.Fence
+import com.guardstar.app.data.fence.FenceApi
 import com.guardstar.app.data.location.CoordConverter
 import com.guardstar.app.data.location.LatestResult
 import com.guardstar.app.data.location.LocationApi
@@ -67,6 +69,7 @@ fun GuardianMapScreen(
     wardNickname: String,
     deviceId: String,
     locationApi: LocationApi,
+    fenceApi: FenceApi,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -77,10 +80,17 @@ fun GuardianMapScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var fences by remember { mutableStateOf<List<Fence>>(emptyList()) }
 
     // 地图实例与标注，跨重组保留。
     val mapView = remember { MapView(context) }
     var aMap by remember { mutableStateOf<AMap?>(null) }
+
+    // 拉取围栏列表（进入页面时一次）。
+    LaunchedEffect(Unit) {
+        runCatching { fenceApi.list(relationId) }
+            .onSuccess { fences = it }
+    }
 
     // 拉取最新位置；手动刷新与自动轮询都通过 refreshKey 触发。
     LaunchedEffect(refreshKey) {
@@ -119,24 +129,40 @@ fun GuardianMapScreen(
         runCatching { aMap = mapView.map }
     }
 
-    // 位置更新时刷新地图标注。
-    latest?.location?.let { loc ->
-        LaunchedEffect(loc.lat, loc.lng) {
-            val map = aMap ?: return@LaunchedEffect
-            val (gcjLat, gcjLng) = CoordConverter.wgs84ToGcj02(loc.lat, loc.lng)
-            val point = LatLng(gcjLat, gcjLng)
-            runCatching {
-                map.clear()
+    // 位置或围栏更新时统一重绘地图（clear 后先画围栏，再画位置标记）。
+    LaunchedEffect(latest?.location?.lat, latest?.location?.lng, fences) {
+        val map = aMap ?: return@LaunchedEffect
+        val loc = latest?.location ?: return@LaunchedEffect
+        runCatching {
+            map.clear()
+            // 围栏圆圈：safe=绿色，danger=红色
+            for (fence in fences) {
+                if (!fence.enabled) continue
+                val (fLat, fLng) = CoordConverter.wgs84ToGcj02(fence.lat, fence.lng)
+                val fillColor = if (fence.type == "safe")
+                    Color.argb(40, 46, 125, 50) else Color.argb(40, 198, 40, 40)
+                val strokeColor = if (fence.type == "safe")
+                    Color.argb(180, 46, 125, 50) else Color.argb(180, 198, 40, 40)
                 map.addCircle(
                     CircleOptions()
-                        .center(point)
-                        .radius(loc.accuracyM)
-                        .strokeWidth(0f)
-                        .fillColor(Color.argb(40, 66, 133, 244))
+                        .center(LatLng(fLat, fLng))
+                        .radius(fence.radiusM.toDouble())
+                        .strokeWidth(2f)
+                        .strokeColor(strokeColor)
+                        .fillColor(fillColor)
                 )
-                map.addMarker(MarkerOptions().position(point).title("位置"))
-                map.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 16f))
             }
+            val (gcjLat, gcjLng) = CoordConverter.wgs84ToGcj02(loc.lat, loc.lng)
+            val point = LatLng(gcjLat, gcjLng)
+            map.addCircle(
+                CircleOptions()
+                    .center(point)
+                    .radius(loc.accuracyM)
+                    .strokeWidth(0f)
+                    .fillColor(Color.argb(40, 66, 133, 244))
+            )
+            map.addMarker(MarkerOptions().position(point).title("位置"))
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 16f))
         }
     }
 
@@ -292,6 +318,25 @@ private fun StatusCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+            if (result.activeFences.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                val inside = result.activeFences.filter { it.inside }
+                val outside = result.activeFences.filter { !it.inside }
+                if (inside.isNotEmpty()) {
+                    Text(
+                        "在围栏内：${inside.joinToString("、") { it.name }}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFF2E7D32),
+                    )
+                }
+                outside.forEach { f ->
+                    Text(
+                        "已离开围栏：${f.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }

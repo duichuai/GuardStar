@@ -7,6 +7,7 @@ import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.event.EventApi
+import com.guardstar.app.data.fence.FenceApi
 import com.guardstar.app.data.location.LocationApi
 import com.guardstar.app.data.location.LocationFlushWorker
 import com.guardstar.app.data.location.LocationQueueStore
@@ -32,6 +33,8 @@ class GuardStarApp : Application() {
         private set
     lateinit var eventApi: EventApi
         private set
+    lateinit var fenceApi: FenceApi
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -48,6 +51,7 @@ class GuardStarApp : Application() {
         locationApi = LocationApi(api)
         sosApi = SosApi(api)
         eventApi = EventApi(api)
+        fenceApi = FenceApi(api)
         val flushWakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "guardstar:flush")
             .apply { setReferenceCounted(false) }

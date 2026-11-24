@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
                     locationRepository = app.locationRepository,
                     sosApi = app.sosApi,
                     eventApi = app.eventApi,
+                    fenceApi = app.fenceApi,
                 )
             }
         }

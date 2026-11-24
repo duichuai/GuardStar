@@ -97,6 +97,16 @@ class ApiClient(
         withContext(Dispatchers.IO) { execute("DELETE", path, null) }
     }
 
+    suspend fun <B, T> patch(
+        path: String,
+        body: B,
+        serializer: SerializationStrategy<B>,
+        deserializer: DeserializationStrategy<T>,
+    ): T = withContext(Dispatchers.IO) {
+        val payload = json.encodeToString(serializer, body)
+        json.decodeFromString(deserializer, execute("PATCH", path, payload))
+    }
+
     private fun execute(method: String, path: String, body: String?): String {
         val builder = Request.Builder().url(root + path)
         when (method) {

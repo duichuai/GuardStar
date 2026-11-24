@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.guardstar.app.data.event.EventApi
 import com.guardstar.app.data.event.EventItem
+import com.guardstar.app.data.fence.FenceApi
 import com.guardstar.app.data.model.RelationSummary
 import com.guardstar.app.data.relation.InviteResponse
 import com.guardstar.app.data.relation.RelationApi
@@ -63,7 +64,9 @@ fun GuardianHomeScreen(
     relationApi: RelationApi,
     eventApi: EventApi,
     sosApi: SosApi,
+    fenceApi: FenceApi,
     onSelectRelation: (RelationSummary) -> Unit,
+    onManageFences: (RelationSummary) -> Unit,
     onLogout: () -> Unit,
 ) {
     var relations by remember { mutableStateOf<List<RelationSummary>>(emptyList()) }
@@ -228,6 +231,21 @@ fun GuardianHomeScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onSelectRelation(relation) },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("查看位置") }
+                                OutlinedButton(
+                                    onClick = { onManageFences(relation) },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("围栏管理") }
                             }
                         }
                         Spacer(Modifier.height(8.dp))
