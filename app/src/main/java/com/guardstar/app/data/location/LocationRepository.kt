@@ -1,5 +1,6 @@
 package com.guardstar.app.data.location
 
+import android.os.PowerManager
 import com.guardstar.app.core.net.ApiException
 import com.guardstar.app.core.session.SessionStore
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,7 @@ class LocationRepository(
     private val store: LocationQueueStore,
     private val api: LocationApi,
     private val session: SessionStore,
+    private val flushWakeLock: PowerManager.WakeLock? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -54,31 +56,37 @@ class LocationRepository(
             updatePending()
             return@withContext
         }
-        val seqs = batch.map { it.clientSeq }
-        store.markUploading(seqs)
-        runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
-            .onSuccess { resp ->
-                val rejected = resp.rejected.map { it.clientSeq }.toSet()
-                val accepted = seqs.filterNot { rejected.contains(it) }
-                store.delete(accepted)
-                store.delete(rejected.toList())
-                _status.update {
-                    it.copy(
-                        lastUploadAt = System.currentTimeMillis(),
-                        lastError = null,
-                        pendingCount = store.countPending(),
-                    )
+        // 上报期间持有唤醒锁，避免设备 Doze 中断网络请求。
+        runCatching { flushWakeLock?.acquire(FLUSH_WAKELOCK_TIMEOUT_MS) }
+        try {
+            val seqs = batch.map { it.clientSeq }
+            store.markUploading(seqs)
+            runCatching { api.upload(session.deviceId, batch.map { it.toUpload() }) }
+                .onSuccess { resp ->
+                    val rejected = resp.rejected.map { it.clientSeq }.toSet()
+                    val accepted = seqs.filterNot { rejected.contains(it) }
+                    store.delete(accepted)
+                    store.delete(rejected.toList())
+                    _status.update {
+                        it.copy(
+                            lastUploadAt = System.currentTimeMillis(),
+                            lastError = null,
+                            pendingCount = store.countPending(),
+                        )
+                    }
                 }
-            }
-            .onFailure { error ->
-                store.backoff(seqs, System.currentTimeMillis() + BACKOFF_MS)
-                _status.update {
-                    it.copy(
-                        lastError = if (error is ApiException) error.message else "网络错误",
-                        pendingCount = store.countPending(),
-                    )
+                .onFailure { error ->
+                    store.backoff(seqs, System.currentTimeMillis() + BACKOFF_MS)
+                    _status.update {
+                        it.copy(
+                            lastError = if (error is ApiException) error.message else "网络错误",
+                            pendingCount = store.countPending(),
+                        )
+                    }
                 }
-            }
+        } finally {
+            runCatching { flushWakeLock?.takeIf { it.isHeld }?.release() }
+        }
     }
 
     fun schedulePurge() {
@@ -96,5 +104,6 @@ class LocationRepository(
         const val BACKOFF_MS = 30 * 1000L
         const val RETENTION_MS = 24 * 60 * 60 * 1000L
         const val PURGE_INTERVAL_MS = 60 * 60 * 1000L
+        const val FLUSH_WAKELOCK_TIMEOUT_MS = 30_000L
     }
 }

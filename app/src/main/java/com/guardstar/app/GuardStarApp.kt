@@ -1,6 +1,7 @@
 package com.guardstar.app
 
 import android.app.Application
+import android.os.PowerManager
 import com.guardstar.app.core.net.ApiClient
 import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.session.SessionStore
@@ -33,7 +34,15 @@ class GuardStarApp : Application() {
         authApi = AuthApi(api, session)
         relationApi = RelationApi(api, session)
         locationApi = LocationApi(api)
-        locationRepository = LocationRepository(LocationQueueStore(this), locationApi, session)
+        val flushWakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "guardstar:flush")
+            .apply { setReferenceCounted(false) }
+        locationRepository = LocationRepository(
+            LocationQueueStore(this),
+            locationApi,
+            session,
+            flushWakeLock,
+        )
         locationRepository.schedulePurge()
     }
 }
