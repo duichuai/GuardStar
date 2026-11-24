@@ -62,7 +62,7 @@ class LocationCollector(
                     locationManager.requestLocationUpdates(
                         provider,
                         currentIntervalMs,
-                        0f,
+                        MIN_DISTANCE_M,
                         listener,
                         handlerThread.looper,
                     )
@@ -72,7 +72,7 @@ class LocationCollector(
         override fun onProviderDisabled(provider: String) = Unit
     }
 
-    fun start(intervalMs: Long = DEFAULT_INTERVAL_MS, minDistanceM: Float = 0f) {
+    fun start(intervalMs: Long = DEFAULT_INTERVAL_MS, minDistanceM: Float = MIN_DISTANCE_M) {
         // 先移除旧注册，保证重复调用 start 不会产生重复回调。
         runCatching { locationManager.removeUpdates(listener) }
         currentIntervalMs = intervalMs
@@ -116,7 +116,7 @@ class LocationCollector(
     private fun reregister(intervalMs: Long) {
         runCatching { locationManager.removeUpdates(listener) }
         currentIntervalMs = intervalMs
-        register(intervalMs, 0f)
+        register(intervalMs, MIN_DISTANCE_M)
     }
 
     private fun emitLastKnown() {
@@ -243,5 +243,8 @@ class LocationCollector(
         const val DEDUPE_WINDOW_MS = 10_000L
         const val LOW_BATTERY_THRESHOLD = 15
         const val LOW_BATTERY_MAX_INTERVAL_MS = 30 * 60 * 1000L
+        // 系统层 minDistance：位移小于此值时不回调，减少 CPU 唤醒与重复处理；
+        // 与去重逻辑的精度下限（10m）匹配。
+        const val MIN_DISTANCE_M = 10f
     }
 }
