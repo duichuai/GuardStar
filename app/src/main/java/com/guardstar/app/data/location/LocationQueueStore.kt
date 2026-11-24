@@ -74,12 +74,20 @@ class LocationQueueStore(context: Context) {
     fun backoff(clientSeqs: List<Int>, nowMs: Long) {
         if (clientSeqs.isEmpty()) return
         val placeholders = clientSeqs.joinToString(",") { "?" }
+        // 指数退避：30s * 2^attempts，封顶 5min。
+        // 用 CASE 替代 pow()，因为 Android 默认 SQLite 不含 math 扩展，pow() 不存在会抛异常。
         val args = (clientSeqs.map { it.toString() } + nowMs.toString()).toTypedArray()
         helper.writableDatabase.execSQL(
             """
             UPDATE $TABLE SET
                 $COL_STATUS = $STATUS_PENDING,
-                $COL_NEXT_ATTEMPT_AT = ? + CAST(min($BACKOFF_BASE_MS * pow(2.0, $COL_ATTEMPTS), $BACKOFF_MAX_MS) AS INTEGER),
+                $COL_NEXT_ATTEMPT_AT = ? + CASE $COL_ATTEMPTS
+                    WHEN 0 THEN 30000
+                    WHEN 1 THEN 60000
+                    WHEN 2 THEN 120000
+                    WHEN 3 THEN 240000
+                    ELSE 300000
+                END,
                 $COL_ATTEMPTS = $COL_ATTEMPTS + 1
             WHERE $COL_CLIENT_SEQ IN ($placeholders)
             """.trimIndent(),
@@ -193,7 +201,5 @@ class LocationQueueStore(context: Context) {
         const val COL_CREATED_AT = "created_at"
         const val STATUS_PENDING = 0
         const val STATUS_UPLOADING = 1
-        const val BACKOFF_BASE_MS = 30_000L
-        const val BACKOFF_MAX_MS = 5 * 60_000L
     }
 }
