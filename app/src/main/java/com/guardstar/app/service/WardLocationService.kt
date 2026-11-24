@@ -41,8 +41,10 @@ class WardLocationService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var flushJob: Job? = null
     private var statusJob: Job? = null
+    private var commandJob: Job? = null
 
     @Volatile private var sosMode: Boolean = false
+    @Volatile private var findingMode: Boolean = false
     @Volatile private var started: Boolean = false
 
     override fun onCreate() {
@@ -73,6 +75,7 @@ class WardLocationService : Service() {
             collector.start(COLLECT_INTERVAL_MS)
             startFlushLoop()
             startStatusLoop()
+            startCommandLoop()
         }
 
         // 支持通过 Intent 切换 SOS 采集模式（30 秒间隔）。
@@ -97,6 +100,7 @@ class WardLocationService : Service() {
         collector.stop()
         flushJob?.cancel()
         statusJob?.cancel()
+        commandJob?.cancel()
         scope.coroutineContext[Job]?.cancel()
         repo.setRunning(false)
         super.onDestroy()
@@ -116,8 +120,8 @@ class WardLocationService : Service() {
                 val locationOk = isLocationAvailable()
                 repo.setLocationAvailable(locationOk)
                 repo.setNotificationsEnabled(areNotificationsEnabled())
-                val interval = if (sosMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
-                val threshold = if (sosMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
+                val interval = if (sosMode || findingMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
+                val threshold = if (sosMode || findingMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
                 val due = pending >= threshold || now - lastFlush >= interval
                 var flushed = false
                 if (due && isNetworkAvailable()) {
@@ -129,7 +133,7 @@ class WardLocationService : Service() {
                 updateNotificationText(pending, locationOk)
                 // flush 后仍有待上报点（积压未排空），缩短下一轮延迟以快速排空；否则按正常轮询间隔。
                 val remaining = repo.status.value.pendingCount
-                val tick = if (sosMode) SOS_TICK_MS else TICK_MS
+                val tick = if (sosMode || findingMode) SOS_TICK_MS else TICK_MS
                 delay(if (flushed && remaining > 0) BACKLOG_DRAIN_TICK_MS else tick)
             }
         }
@@ -180,6 +184,33 @@ class WardLocationService : Service() {
             while (isActive) {
                 delay(STATUS_INTERVAL_MS)
                 reportStatus()
+            }
+        }
+    }
+
+    /**
+     * 轮询监护人下发的命令（refresh / finding_mode 等）。
+     * refresh：立即触发一次批量上报；finding_mode：切换到 30 秒高频采集。
+     */
+    private fun startCommandLoop() {
+        commandJob = scope.launch {
+            while (isActive) {
+                if (session.isLoggedIn()) {
+                    runCatching { locationApi.fetchCommands(session.deviceId) }
+                        .onSuccess { commands ->
+                            for (cmd in commands) {
+                                when (cmd.type) {
+                                    "refresh" -> repo.flush()
+                                    "finding_mode" -> {
+                                        findingMode = true
+                                        collector.setSosMode(true)
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        }
+                }
+                delay(COMMAND_POLL_INTERVAL_MS)
             }
         }
     }
@@ -238,6 +269,7 @@ class WardLocationService : Service() {
         private const val BACKLOG_DRAIN_TICK_MS = 1_000L
         private const val SOS_TICK_MS = 5_000L
         private const val STATUS_INTERVAL_MS = 15 * 60 * 1000L
+        private const val COMMAND_POLL_INTERVAL_MS = 30_000L
 
         fun start(context: Context) {
             val intent = Intent(context, WardLocationService::class.java)

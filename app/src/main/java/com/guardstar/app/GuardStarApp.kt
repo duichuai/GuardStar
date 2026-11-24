@@ -29,6 +29,11 @@ class GuardStarApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 高德地图隐私合规初始化：必须在任何地图 API 调用前执行。
+        runCatching {
+            com.amap.api.maps.MapsInitializer.updatePrivacyShow(this, true, true)
+            com.amap.api.maps.MapsInitializer.updatePrivacyAgree(this, true)
+        }
         session = SessionStore(this)
         roleStore = RoleStore(this)
         val api = ApiClient(session)

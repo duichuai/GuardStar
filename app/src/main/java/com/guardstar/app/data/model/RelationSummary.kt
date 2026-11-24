@@ -10,4 +10,6 @@ data class RelationSummary(
     val role: String = "ward",
     val status: String = "active",
     val createdAt: String = "",
+    /** 被守护人最近注册的设备 ID，用于下发刷新/寻找模式等命令。 */
+    val wardDeviceId: String = "",
 )

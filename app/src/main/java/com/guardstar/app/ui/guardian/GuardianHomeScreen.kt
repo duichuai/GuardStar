@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Shield
@@ -51,6 +52,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun GuardianHomeScreen(
     relationApi: RelationApi,
+    onSelectRelation: (RelationSummary) -> Unit,
     onLogout: () -> Unit,
 ) {
     var relations by remember { mutableStateOf<List<RelationSummary>>(emptyList()) }
@@ -123,7 +125,11 @@ fun GuardianHomeScreen(
 
                 else -> Column {
                     relations.forEach { relation ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectRelation(relation) },
+                        ) {
                             Row(
                                 modifier = Modifier.padding(16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
