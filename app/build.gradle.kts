@@ -1,7 +1,24 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+// 发布签名配置来自本地，不进入仓库：优先环境变量，其次 local.properties 指向的文件。
+fun loadKeystoreProperties(): Properties? {
+    val candidates = mutableListOf<File>()
+    System.getenv("GUARDSTAR_KEYSTORE_PROPERTIES")?.let { candidates.add(File(it)) }
+    val localProperties = rootProject.file("local.properties")
+    if (localProperties.isFile) {
+        val local = Properties().apply { localProperties.inputStream().use { load(it) } }
+        local.getProperty("guardstar.keystoreProperties")?.let { candidates.add(File(it)) }
+    }
+    candidates.add(rootProject.file("keystore.properties"))
+    val file = candidates.firstOrNull { it.isFile } ?: return null
+    return Properties().apply { file.inputStream().use { load(it) } }
 }
 
 android {
@@ -21,12 +38,27 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
     }
 
+    signingConfigs {
+        val keystoreProperties = loadKeystoreProperties()
+        if (keystoreProperties != null) {
+            create("release") {
+                storeFile = File(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        } else {
+            logger.warn("未找到发布签名配置，release 构建将不签名")
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
