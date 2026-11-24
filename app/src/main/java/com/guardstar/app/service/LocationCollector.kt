@@ -145,6 +145,8 @@ class LocationCollector(
         // 3. 重复定位去重：10s 内且位移小于精度，视为同一点
         val lat = lastLat
         val lng = lastLng
+        // 提前读取电量，供自适应策略做低电量节流。
+        val battery = readBattery()
         if (lat != null && lng != null) {
             val results = FloatArray(1)
             Location.distanceBetween(lat, lng, location.latitude, location.longitude, results)
@@ -153,15 +155,14 @@ class LocationCollector(
             if (since < DEDUPE_WINDOW_MS && distance <= (if (location.hasAccuracy()) location.accuracy else 10f)) {
                 return
             }
-            updatePolicy(distance)
+            updatePolicy(distance, battery)
         } else {
-            updatePolicy(Float.MAX_VALUE)
+            updatePolicy(Float.MAX_VALUE, battery)
         }
 
         val recordedAt = Instant.ofEpochMilli(location.time)
             .atOffset(ZoneOffset.UTC)
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-        val battery = readBattery()
         val point = QueuePoint(
             recordedAt = recordedAt,
             lat = location.latitude,
@@ -183,10 +184,13 @@ class LocationCollector(
         }
     }
 
-    /** 根据最近一次位移调整采集间隔，仅在变化时重新注册。SOS 模式下不调整。 */
-    private fun updatePolicy(distanceM: Float) {
+    /**
+     * 根据最近一次位移调整采集间隔，仅在变化时重新注册。SOS 模式下不调整。
+     * 低电量（<15% 且未充电）时将间隔翻倍（封顶 30 分钟）以延长续航；SOS 紧急模式不受影响。
+     */
+    private fun updatePolicy(distanceM: Float, battery: Pair<Int, Boolean>) {
         if (sosMode) return
-        val desired = when {
+        val base = when {
             distanceM > MOVING_THRESHOLD_M -> {
                 stationaryCount = 0
                 MOVING_INTERVAL_MS
@@ -200,6 +204,8 @@ class LocationCollector(
                 DEFAULT_INTERVAL_MS
             }
         }
+        val lowBattery = battery.first in 0 until LOW_BATTERY_THRESHOLD && !battery.second
+        val desired = if (lowBattery) (base * 2).coerceAtMost(LOW_BATTERY_MAX_INTERVAL_MS) else base
         if (desired != currentIntervalMs) reregister(desired)
     }
 
@@ -235,5 +241,7 @@ class LocationCollector(
         const val STALE_MS = 15_000L
         const val LAST_KNOWN_STALE_MS = 5 * 60 * 1000L
         const val DEDUPE_WINDOW_MS = 10_000L
+        const val LOW_BATTERY_THRESHOLD = 15
+        const val LOW_BATTERY_MAX_INTERVAL_MS = 30 * 60 * 1000L
     }
 }
