@@ -108,6 +108,7 @@ class WardLocationService : Service() {
                 val now = System.currentTimeMillis()
                 val locationOk = isLocationAvailable()
                 repo.setLocationAvailable(locationOk)
+                repo.setNotificationsEnabled(areNotificationsEnabled())
                 val interval = if (sosMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
                 val threshold = if (sosMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
                 val due = pending >= threshold || now - lastFlush >= interval
@@ -147,6 +148,13 @@ class WardLocationService : Service() {
     private fun isNetworkAvailable(): Boolean {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         return runCatching { cm.activeNetworkInfo?.isConnected == true }.getOrDefault(false)
+    }
+
+    /** Android 13+ 通知权限；低版本默认开启。 */
+    private fun areNotificationsEnabled(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
     }
 
     private fun startStatusLoop() {

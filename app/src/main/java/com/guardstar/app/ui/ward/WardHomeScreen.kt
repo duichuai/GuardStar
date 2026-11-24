@@ -358,6 +358,25 @@ fun WardHomeScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                     ) { Text("前往设置加入白名单") }
                                 }
+                                if (!locStatus.notificationsEnabled) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        text = "通知权限已关闭，将看不到位置共享常驻通知",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    TextButton(
+                                        onClick = {
+                                            runCatching {
+                                                val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                                context.startActivity(intent)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text("前往开启通知") }
+                                }
                             } else {
                                 Button(
                                     onClick = { startSharing() },
