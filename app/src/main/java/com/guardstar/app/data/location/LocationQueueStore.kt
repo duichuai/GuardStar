@@ -123,12 +123,12 @@ class LocationQueueStore(context: Context) {
         )
     }
 
-    /** 删除超过保留期（默认 24 小时）的队列数据。 */
+    /** 删除超过保留期（默认 24 小时）的队列数据。仅删除 pending 状态，避免误删正在上传的记录。 */
     fun purgeOlderThan(cutoffMs: Long): Int {
         return helper.writableDatabase.delete(
             TABLE,
-            "$COL_CREATED_AT < ?",
-            arrayOf(cutoffMs.toString()),
+            "$COL_CREATED_AT < ? AND $COL_STATUS = ?",
+            arrayOf(cutoffMs.toString(), STATUS_PENDING.toString()),
         )
     }
 
