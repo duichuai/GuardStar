@@ -22,6 +22,8 @@ class MainActivity : ComponentActivity() {
                     relationApi = app.relationApi,
                     locationApi = app.locationApi,
                     locationRepository = app.locationRepository,
+                    sosApi = app.sosApi,
+                    eventApi = app.eventApi,
                 )
             }
         }

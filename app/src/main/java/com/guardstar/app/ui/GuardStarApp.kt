@@ -17,9 +17,11 @@ import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.role.UserRole
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
+import com.guardstar.app.data.event.EventApi
 import com.guardstar.app.data.location.LocationApi
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
+import com.guardstar.app.data.sos.SosApi
 import com.guardstar.app.service.WardLocationService
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.guardian.GuardianMapScreen
@@ -41,6 +43,8 @@ fun GuardStarApp(
     relationApi: RelationApi,
     locationApi: LocationApi,
     locationRepository: LocationRepository,
+    sosApi: SosApi,
+    eventApi: EventApi,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -91,12 +95,15 @@ fun GuardStarApp(
             WardHomeScreen(
                 relationApi = relationApi,
                 locationRepository = locationRepository,
+                sosApi = sosApi,
                 onLogout = { logout() },
             )
         }
         composable(ROUTE_GUARDIAN) {
             GuardianHomeScreen(
                 relationApi = relationApi,
+                eventApi = eventApi,
+                sosApi = sosApi,
                 onSelectRelation = { relation ->
                     val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
                     navController.navigate(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Group
@@ -47,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,15 +57,19 @@ import androidx.core.content.ContextCompat
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.model.RelationSummary
 import com.guardstar.app.data.relation.RelationApi
+import com.guardstar.app.data.sos.SosApi
+import com.guardstar.app.data.sos.SosLocation
 import com.guardstar.app.service.BatteryOptimize
 import com.guardstar.app.service.WardLocationService
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WardHomeScreen(
     relationApi: RelationApi,
     locationRepository: LocationRepository,
+    sosApi: SosApi,
     onLogout: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -140,6 +146,59 @@ fun WardHomeScreen(
     var joining by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+
+    // SOS 一键求助状态。
+    var sosSending by remember { mutableStateOf(false) }
+    var sosActive by remember { mutableStateOf(false) }
+    var sosError by remember { mutableStateOf<String?>(null) }
+
+    fun sendSos() {
+        if (sosSending || sosActive) return
+        val relation = relations.firstOrNull() ?: run {
+            sosError = "请先完成配对"
+            return
+        }
+        val point = locStatus.lastPoint
+        if (point == null) {
+            // 尚无定位：先启动服务采集，提示稍后再试。
+            WardLocationService.start(context)
+            sosError = "正在获取定位，请稍后重试"
+            return
+        }
+        sosSending = true
+        sosError = null
+        scope.launch {
+            val recordedAt = point.recordedAt
+            val battery = runCatching {
+                (context.getSystemService(android.content.Context.BATTERY_SERVICE)
+                        as android.os.BatteryManager).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            }.getOrNull()
+            runCatching {
+                sosApi.create(
+                    relationId = relation.relationId,
+                    clientEventId = UUID.randomUUID().toString(),
+                    location = SosLocation(
+                        lat = point.lat,
+                        lng = point.lng,
+                        accuracyM = point.accuracyM,
+                        recordedAt = recordedAt,
+                    ),
+                    battery = battery,
+                )
+            }.onSuccess {
+                sosActive = true
+                // 切换到 SOS 高频采集模式（30s），持续上报位置。
+                WardLocationService.setSosMode(context, true)
+            }.onFailure { err ->
+                sosError = when {
+                    err is com.guardstar.app.core.net.ApiException && err.code == "SOS_ALREADY_ACTIVE" ->
+                        "已有进行中的求助"
+                    else -> err.message ?: "求助发送失败"
+                }
+            }
+            sosSending = false
+        }
+    }
 
     LaunchedEffect(refreshKey) {
         loading = true
@@ -437,7 +496,13 @@ fun WardHomeScreen(
                 Card(
                     shape = CircleShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
+                        containerColor = if (sosActive) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier.combinedClickable(
+                        enabled = relations.isNotEmpty() && !sosSending,
+                        onLongClick = { sendSos() },
+                        onClick = {},
                     )
                 ) {
                     Row(
@@ -449,19 +514,38 @@ fun WardHomeScreen(
                             Icon(
                                 Icons.Filled.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
+                                tint = if (sosActive) MaterialTheme.colorScheme.onError
+                                else MaterialTheme.colorScheme.error
                             )
                             Spacer(Modifier.height(4.dp))
-                            Text("SOS", fontWeight = FontWeight.Bold)
+                            Text(
+                                if (sosSending) "发送中" else "SOS",
+                                fontWeight = FontWeight.Bold,
+                                color = if (sosActive) MaterialTheme.colorScheme.onError
+                                else Color.Unspecified,
+                            )
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = if (relations.isEmpty()) "配对后可用" else "长按 3 秒发出求助（即将接入）",
+                    text = when {
+                        sosActive -> "求助已发出，等待监护人响应"
+                        relations.isEmpty() -> "配对后可用"
+                        else -> "长按 3 秒发出求助"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (sosActive) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                sosError?.let { msg ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }
