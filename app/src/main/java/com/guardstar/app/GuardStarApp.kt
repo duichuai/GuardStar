@@ -7,6 +7,7 @@ import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.session.SessionStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.location.LocationApi
+import com.guardstar.app.data.location.LocationFlushWorker
 import com.guardstar.app.data.location.LocationQueueStore
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
@@ -44,5 +45,6 @@ class GuardStarApp : Application() {
             flushWakeLock,
         )
         locationRepository.schedulePurge()
+        LocationFlushWorker.enqueuePeriodic(this)
     }
 }

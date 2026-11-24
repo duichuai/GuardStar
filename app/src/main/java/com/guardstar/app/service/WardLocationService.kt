@@ -65,6 +65,11 @@ class WardLocationService : Service() {
         startFlushLoop()
         startStatusLoop()
 
+        // 支持通过 Intent 切换 SOS 采集模式（30 秒间隔）。
+        if (intent?.hasExtra(EXTRA_SOS) == true) {
+            collector.setSosMode(intent.getBooleanExtra(EXTRA_SOS, false))
+        }
+
         return START_STICKY
     }
 
@@ -85,13 +90,19 @@ class WardLocationService : Service() {
             while (isActive) {
                 val pending = repo.status.value.pendingCount
                 val now = System.currentTimeMillis()
-                if (pending >= FLUSH_THRESHOLD || now - lastFlush >= FLUSH_INTERVAL_MS) {
+                val due = pending >= FLUSH_THRESHOLD || now - lastFlush >= FLUSH_INTERVAL_MS
+                if (due && isNetworkAvailable()) {
                     repo.flush()
                     lastFlush = now
                 }
                 delay(10_000)
             }
         }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        return runCatching { cm.activeNetworkInfo?.isConnected == true }.getOrDefault(false)
     }
 
     private fun startStatusLoop() {
@@ -147,5 +158,14 @@ class WardLocationService : Service() {
         fun stop(context: Context) {
             context.stopService(Intent(context, WardLocationService::class.java))
         }
+
+        /** 切换 SOS 采集模式；若服务未运行则先启动。 */
+        fun setSosMode(context: Context, enabled: Boolean) {
+            val intent = Intent(context, WardLocationService::class.java)
+                .putExtra(EXTRA_SOS, enabled)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        private const val EXTRA_SOS = "sos_mode"
     }
 }

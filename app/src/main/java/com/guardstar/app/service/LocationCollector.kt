@@ -48,6 +48,7 @@ class LocationCollector(
     @Volatile private var lastLng: Double? = null
     @Volatile private var lastEmitAt: Long = 0L
     @Volatile private var stationaryCount: Int = 0
+    @Volatile private var sosMode: Boolean = false
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) = handle(location)
@@ -67,6 +68,16 @@ class LocationCollector(
         runCatching { locationManager.removeUpdates(listener) }
         handlerThread.quitSafely()
         scope.coroutineContext[Job]?.cancel()
+    }
+
+    /**
+     * SOS 模式：强制 30 秒采集间隔，禁用静止节流，保证紧急时定位密度。
+     */
+    fun setSosMode(enabled: Boolean) {
+        if (sosMode == enabled) return
+        sosMode = enabled
+        stationaryCount = 0
+        reregister(if (enabled) SOS_INTERVAL_MS else DEFAULT_INTERVAL_MS)
     }
 
     private fun register(intervalMs: Long, minDistanceM: Float) {
@@ -148,8 +159,9 @@ class LocationCollector(
         scope.launch { onPoint(point) }
     }
 
-    /** 根据最近一次位移调整采集间隔，仅在变化时重新注册。 */
+    /** 根据最近一次位移调整采集间隔，仅在变化时重新注册。SOS 模式下不调整。 */
     private fun updatePolicy(distanceM: Float) {
+        if (sosMode) return
         val desired = when {
             distanceM > MOVING_THRESHOLD_M -> {
                 stationaryCount = 0
@@ -181,6 +193,7 @@ class LocationCollector(
         const val DEFAULT_INTERVAL_MS = 5 * 60 * 1000L
         const val MOVING_INTERVAL_MS = 60 * 1000L
         const val STATIONARY_INTERVAL_MS = 15 * 60 * 1000L
+        const val SOS_INTERVAL_MS = 30 * 1000L
         const val MOVING_THRESHOLD_M = 100f
         const val STATIONARY_THRESHOLD_M = 50f
         const val STATIONARY_COUNT = 3
