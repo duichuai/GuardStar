@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">守护星</string>
+
+    <string name="role_title">选择这台手机的角色</string>
+    <string name="role_subtitle">角色决定这台手机做什么，之后可以在设置中切换。</string>
+    <string name="role_guardian_title">我是监护人</string>
+    <string name="role_guardian_desc">查看家人位置、设置围栏、接收求助与提醒。</string>
+    <string name="role_ward_title">这台手机是被守护人</string>
+    <string name="role_ward_desc">向已绑定的监护人共享位置，可随时暂停。</string>
+    <string name="role_privacy_note">被守护端位置只会发送给经本人确认的监护人，且始终显示可见通知。</string>
+</resources>
