@@ -1,8 +1,11 @@
 package com.guardstar.app.service
 
+import android.Manifest
+import android.app.ActivityManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -38,6 +41,8 @@ class WardLocationService : Service() {
     private var flushJob: Job? = null
     private var statusJob: Job? = null
 
+    @Volatile private var sosMode: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         app = application as GuardStarApp
@@ -67,7 +72,8 @@ class WardLocationService : Service() {
 
         // 支持通过 Intent 切换 SOS 采集模式（30 秒间隔）。
         if (intent?.hasExtra(EXTRA_SOS) == true) {
-            collector.setSosMode(intent.getBooleanExtra(EXTRA_SOS, false))
+            sosMode = intent.getBooleanExtra(EXTRA_SOS, false)
+            collector.setSosMode(sosMode)
         }
 
         return START_STICKY
@@ -90,14 +96,24 @@ class WardLocationService : Service() {
             while (isActive) {
                 val pending = repo.status.value.pendingCount
                 val now = System.currentTimeMillis()
-                val due = pending >= FLUSH_THRESHOLD || now - lastFlush >= FLUSH_INTERVAL_MS
+                val interval = if (sosMode) SOS_FLUSH_INTERVAL_MS else FLUSH_INTERVAL_MS
+                val threshold = if (sosMode) SOS_FLUSH_THRESHOLD else FLUSH_THRESHOLD
+                val due = pending >= threshold || now - lastFlush >= interval
                 if (due && isNetworkAvailable()) {
                     repo.flush()
                     lastFlush = now
                 }
-                delay(10_000)
+                // 每轮更新通知文案，展示待上报数。
+                updateNotificationText(pending)
+                delay(if (sosMode) SOS_TICK_MS else TICK_MS)
             }
         }
+    }
+
+    private fun updateNotificationText(pending: Int) {
+        val prefix = if (sosMode) "SOS 紧急定位中" else "正在共享位置"
+        val text = if (pending > 0) "$prefix · 待上报 $pending 条" else prefix
+        Notifications.updateLocationNotification(this, text)
     }
 
     private fun isNetworkAvailable(): Boolean {
@@ -122,12 +138,25 @@ class WardLocationService : Service() {
                 DeviceStatusRequest(
                     battery = readBatteryPct(),
                     charging = isCharging(),
-                    locationPermission = "granted_precise",
-                    backgroundRestricted = false,
+                    locationPermission = locationPermissionState(),
+                    backgroundRestricted = isBackgroundRestricted(),
                     reportingPaused = false,
                 ),
             )
         }
+    }
+
+    private fun locationPermissionState(): String = when {
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED -> "denied"
+        checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED -> "granted_background"
+        else -> "granted_foreground"
+    }
+
+    private fun isBackgroundRestricted(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        return runCatching {
+            (getSystemService(ACTIVITY_SERVICE) as ActivityManager).isBackgroundRestricted
+        }.getOrDefault(false)
     }
 
     private fun readBatteryPct(): Int {
@@ -148,6 +177,10 @@ class WardLocationService : Service() {
         private const val COLLECT_INTERVAL_MS = 5 * 60 * 1000L
         private const val FLUSH_INTERVAL_MS = 60 * 1000L
         private const val FLUSH_THRESHOLD = 20
+        private const val SOS_FLUSH_INTERVAL_MS = 15 * 1000L
+        private const val SOS_FLUSH_THRESHOLD = 5
+        private const val TICK_MS = 10_000L
+        private const val SOS_TICK_MS = 5_000L
         private const val STATUS_INTERVAL_MS = 15 * 60 * 1000L
 
         fun start(context: Context) {

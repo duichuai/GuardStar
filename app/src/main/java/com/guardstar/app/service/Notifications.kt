@@ -29,7 +29,7 @@ object Notifications {
         }
     }
 
-    fun locationNotification(context: Context): android.app.Notification {
+    fun locationNotification(context: Context, contentText: String = "正在共享位置给你的监护人"): android.app.Notification {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -41,10 +41,16 @@ object Notifications {
         )
         return NotificationCompat.Builder(context, CHANNEL_WARD_LOCATION)
             .setContentTitle("守护星")
-            .setContentText("正在共享位置给你的监护人")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setContentIntent(pi)
             .build()
+    }
+
+    /** 更新前台服务通知文案（如待上报数）。 */
+    fun updateLocationNotification(context: Context, contentText: String) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.notify(ID_WARD_LOCATION, locationNotification(context, contentText))
     }
 }

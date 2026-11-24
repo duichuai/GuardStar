@@ -156,7 +156,7 @@ class LocationCollector(
         lastLat = location.latitude
         lastLng = location.longitude
         lastEmitAt = System.currentTimeMillis()
-        scope.launch { onPoint(point) }
+        scope.launch { runCatching { onPoint(point) } }
     }
 
     /** 根据最近一次位移调整采集间隔，仅在变化时重新注册。SOS 模式下不调整。 */
