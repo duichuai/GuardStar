@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-25
+
 ### 修复
 
 - 被守护端启动后未自动恢复位置共享：进入首页时在权限齐全的前提下自动启动服务；新增“主动停止共享”记忆，停止后不再被开机或启动自动拉起。
@@ -45,6 +47,7 @@
 - 修复 `minDistance` 被覆盖、网络检测使用过时 API 的问题。
 - 修复多次启动采集服务导致的并发采集与重复上报循环。
 
-[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/duichuai/GuardStar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/duichuai/GuardStar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/duichuai/GuardStar/releases/tag/v0.1.0
