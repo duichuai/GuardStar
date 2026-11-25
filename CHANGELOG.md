@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-25
+
 ### 变更
 
 - 新建/编辑围栏改为地图选点：新建时自动定位到被守护人最新位置，点击地图调整中心并实时预览围栏范围，无需手动输入经纬度。
@@ -38,5 +40,6 @@
 - 修复 `minDistance` 被覆盖、网络检测使用过时 API 的问题。
 - 修复多次启动采集服务导致的并发采集与重复上报循环。
 
-[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/duichuai/GuardStar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/duichuai/GuardStar/releases/tag/v0.1.0
