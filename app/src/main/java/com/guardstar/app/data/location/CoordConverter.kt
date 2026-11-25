@@ -18,6 +18,20 @@ object CoordConverter {
     private const val A = 6378245.0
     private const val EE = 0.00669342162296594323
 
+    /** 将 GCJ-02 坐标转为 WGS-84，返回 (lat, lng)。境外坐标直接返回原值。 */
+    fun gcj02ToWgs84(lat: Double, lng: Double): Pair<Double, Double> {
+        if (outOfChina(lat, lng)) return lat to lng
+        var wgsLat = lat
+        var wgsLng = lng
+        // 用正变换迭代逼近，3 次即可达到厘米级精度。
+        repeat(3) {
+            val (gcjLat, gcjLng) = wgs84ToGcj02(wgsLat, wgsLng)
+            wgsLat -= gcjLat - lat
+            wgsLng -= gcjLng - lng
+        }
+        return wgsLat to wgsLng
+    }
+
     /** 将 WGS-84 坐标转为 GCJ-02，返回 (lat, lng)。境外坐标直接返回原值。 */
     fun wgs84ToGcj02(lat: Double, lng: Double): Pair<Double, Double> {
         if (outOfChina(lat, lng)) return lat to lng
