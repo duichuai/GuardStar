@@ -41,8 +41,9 @@ android {
         applicationId = "com.guardstar.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // 版本号可由 -PversionCode / -PversionName 覆盖（CI 发布时按 tag 注入）。
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "0.1.0"
 
         // 开发默认指向宿主机；真机联调时改为局域网地址。
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")

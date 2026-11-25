@@ -1,0 +1,128 @@
+name: Release
+
+# 打 tag（v*）时自动构建并发布 Android 安装包。
+# 需要配置的仓库 secrets：
+#   ANDROID_KEYSTORE_BASE64   发布签名 keystore 的 base64（base64 -w0 guardstar-release.jks）
+#   KEYSTORE_STORE_PASSWORD   keystore 密码
+#   KEYSTORE_KEY_ALIAS        密钥别名
+#   KEYSTORE_KEY_PASSWORD     密钥密码
+#   AMAP_KEY                  高德地图 Android Key（可选，缺失时地图不可用）
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（例如 v0.2.0）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法从 tag '$TAG' 解析版本号"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager --install "platform-tools" "platforms;android-37.1" "build-tools;37.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::缺少仓库 secret ANDROID_KEYSTORE_BASE64"
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/guardstar-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          cat > "$RUNNER_TEMP/keystore.properties" <<EOF
+          storeFile=$KEYSTORE
+          storePassword=$KEYSTORE_STORE_PASSWORD
+          keyAlias=$KEYSTORE_KEY_ALIAS
+          keyPassword=$KEYSTORE_KEY_PASSWORD
+          EOF
+          echo "GUARDSTAR_KEYSTORE_PROPERTIES=$RUNNER_TEMP/keystore.properties" >> "$GITHUB_ENV"
+
+      - name: Configure amap key
+        env:
+          AMAP_KEY: ${{ secrets.AMAP_KEY }}
+        run: |
+          if [ -n "$AMAP_KEY" ]; then
+            printf 'amap.key=%s\n' "$AMAP_KEY" > local.properties
+          else
+            echo "::warning::未配置 AMAP_KEY，发布包将不包含高德地图 Key"
+          fi
+
+      - name: Build release
+        run: |
+          ./gradlew --stacktrace assembleRelease bundleRelease \
+            -PversionName=${{ steps.version.outputs.name }} \
+            -PversionCode=${{ steps.version.outputs.code }}
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/GuardStar-${{ steps.version.outputs.name }}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "dist/GuardStar-${{ steps.version.outputs.name }}.aab"
+          cd dist && sha256sum ./* > SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardstar-${{ steps.version.outputs.name }}
+          path: dist/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: GuardStar ${{ steps.version.outputs.name }}
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(steps.version.outputs.name, '-') }}
