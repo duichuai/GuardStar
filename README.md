@@ -45,7 +45,7 @@ amap.key=your_amap_android_key
 - release 包名：`com.guardstar.app`
 - debug 包名：`com.guardstar.app.debug`
 
-客户端默认请求 `http://10.0.2.2:8080`，适用于 Android 模拟器访问宿主机服务。真机联调时，请在 `app/build.gradle.kts` 中调整 `API_BASE_URL`；不要把个人内网地址或凭证提交到仓库。
+客户端默认请求当前临时部署地址 `http://120.48.105.157`（HTTP）。模拟器联调时可在 `app/build.gradle.kts` 中改为 `http://10.0.2.2:8080`；不要把个人凭证提交到仓库。
 
 ## 构建与安装
 

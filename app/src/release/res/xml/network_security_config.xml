@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅放行当前临时服务端 IP 的明文 HTTP，其余域名仍强制 HTTPS。 -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">120.48.105.157</domain>
+    </domain-config>
+</network-security-config>

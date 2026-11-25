@@ -45,8 +45,9 @@ android {
         versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
         versionName = providers.gradleProperty("versionName").orNull ?: "0.1.0"
 
-        // 开发默认指向宿主机；真机联调时改为局域网地址。
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+        // 当前指向临时部署环境（IP + HTTP）；域名与 HTTPS 就绪后切换。
+        // 模拟器联调可临时改为 http://10.0.2.2:8080。
+        buildConfigField("String", "API_BASE_URL", "\"http://120.48.105.157\"")
 
         // 高德 3D 地图 SDK 仅支持 armeabi-v7a 与 arm64-v8a。
         ndk {
