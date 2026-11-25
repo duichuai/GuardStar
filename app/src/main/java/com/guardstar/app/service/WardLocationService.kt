@@ -216,12 +216,15 @@ class WardLocationService : Service() {
     }
 
     private suspend fun reportStatus() {
+        val battery = readBatteryPct()
+        val charging = isCharging()
+        Notifications.notifyWardLowBattery(this, battery, charging)
         runCatching {
             locationApi.reportStatus(
                 session.deviceId,
                 DeviceStatusRequest(
-                    battery = readBatteryPct(),
-                    charging = isCharging(),
+                    battery = battery,
+                    charging = charging,
                     locationPermission = locationPermissionState(),
                     backgroundRestricted = isBackgroundRestricted(),
                     reportingPaused = false,

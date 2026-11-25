@@ -1,5 +1,10 @@
 package com.guardstar.app.ui.guardian
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +55,7 @@ import com.guardstar.app.data.model.RelationSummary
 import com.guardstar.app.data.relation.InviteResponse
 import com.guardstar.app.data.relation.RelationApi
 import com.guardstar.app.data.sos.SosApi
+import com.guardstar.app.service.Notifications
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -69,18 +76,41 @@ fun GuardianHomeScreen(
     onSelectRelation: (RelationSummary) -> Unit,
     onManageFences: (RelationSummary) -> Unit,
     onViewTrack: (RelationSummary) -> Unit,
+    pendingEvent: Notifications.EventTarget?,
+    onPendingEventHandled: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     var relations by remember { mutableStateOf<List<RelationSummary>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    // SOS 告警：relationId -> 未读 sos_created 事件列表
-    var sosAlerts by remember { mutableStateOf<Map<String, List<EventItem>>>(emptyMap()) }
+    // 最近事件：relationId -> 事件列表；告警区只展示其中未读项。
+    var eventsByRelation by remember { mutableStateOf<Map<String, List<EventItem>>>(emptyMap()) }
+    var eventsLoaded by remember { mutableStateOf(false) }
+    var selectedEvent by remember { mutableStateOf<Pair<RelationSummary, EventItem>?>(null) }
     var ackBusy by remember { mutableStateOf(false) }
+    var readBusy by remember { mutableStateOf(false) }
     var ackTarget by remember { mutableStateOf<Pair<RelationSummary, EventItem>?>(null) }
     val scope = rememberCoroutineScope()
+    val sosAlerts = eventsByRelation.mapValues { (_, events) ->
+        events.filter { it.type == "sos_created" && !it.read }
+    }.filterValues { it.isNotEmpty() }
+    val otherAlerts = eventsByRelation.mapValues { (_, events) ->
+        events.filter { it.type != "sos_created" && !it.read }
+    }.filterValues { it.isNotEmpty() }
 
     LaunchedEffect(refreshKey) {
         loading = true
@@ -90,21 +120,74 @@ fun GuardianHomeScreen(
         loading = false
     }
 
-    // 轮询各关系下未读的 sos_created 事件，每 15 秒一次。
+    // 轮询各关系下的全部事件，每 15 秒一次；通知按事件 ID 本地去重。
     LaunchedEffect(relations) {
+        eventsLoaded = false
         while (true) {
             if (relations.isNotEmpty()) {
-                val alerts = mutableMapOf<String, List<EventItem>>()
+                // 单个关系拉取失败时保留上次数据，避免弱网下告警短暂消失。
+                val loaded = eventsByRelation.toMutableMap()
                 for (rel in relations) {
-                    runCatching { eventApi.list(rel.relationId, type = "sos_created", limit = 10) }
+                    runCatching { eventApi.list(rel.relationId, limit = 50) }
                         .onSuccess { resp ->
-                            val unread = resp.items.filter { !it.read }
-                            if (unread.isNotEmpty()) alerts[rel.relationId] = unread
+                            loaded[rel.relationId] = resp.items
+                            Notifications.notifyNewEvents(
+                                context = context,
+                                relation = rel,
+                                events = resp.items.filter { !it.read },
+                            )
                         }
                 }
-                sosAlerts = alerts
+                eventsByRelation = loaded.filterKeys { relationId ->
+                    relations.any { it.relationId == relationId }
+                }
+            } else {
+                eventsByRelation = emptyMap()
             }
+            eventsLoaded = true
             delay(15_000)
+        }
+    }
+
+    LaunchedEffect(pendingEvent, eventsByRelation, eventsLoaded, loading) {
+        val target = pendingEvent ?: return@LaunchedEffect
+        if (!eventsLoaded || loading) return@LaunchedEffect
+        val relation = relations.firstOrNull { it.relationId == target.relationId }
+        val event = eventsByRelation[target.relationId]?.firstOrNull { it.eventId == target.eventId }
+        if (relation != null && event != null) {
+            selectedEvent = relation to event
+        } else {
+            error = "该提醒不存在或已超出最近事件范围"
+        }
+        onPendingEventHandled()
+    }
+
+    fun markEventRead(relation: RelationSummary, event: EventItem, onRead: () -> Unit = {}) {
+        if (event.read) {
+            selectedEvent = null
+            onRead()
+            return
+        }
+        if (readBusy) return
+        readBusy = true
+        scope.launch {
+            runCatching { eventApi.markRead(event.eventId) }
+                .onSuccess {
+                    eventsByRelation = eventsByRelation.mapValues { (relationId, events) ->
+                        if (relationId != relation.relationId) return@mapValues events
+                        events.map { item ->
+                            if (item.eventId == event.eventId) item.copy(read = true) else item
+                        }
+                    }
+                    Notifications.cancelEvent(context, event.eventId)
+                    selectedEvent = null
+                    readBusy = false
+                    onRead()
+                }
+                .onFailure { failure ->
+                    error = failure.message ?: "标记已读失败"
+                    readBusy = false
+                }
         }
     }
 
@@ -119,10 +202,14 @@ fun GuardianHomeScreen(
             runCatching { sosApi.ack(sosId, action, reason) }
                 .onSuccess {
                     runCatching { eventApi.markRead(event.eventId) }
-                    // 移除已处理的告警。
-                    sosAlerts = sosAlerts.mapValues { (rid, list) ->
-                        if (rid == relation.relationId) list.filter { it.eventId != event.eventId } else list
-                    }.filterValues { it.isNotEmpty() }
+                    eventsByRelation = eventsByRelation.mapValues { (relationId, events) ->
+                        if (relationId != relation.relationId) return@mapValues events
+                        events.map { item ->
+                            if (item.eventId == event.eventId) item.copy(read = true) else item
+                        }
+                    }
+                    Notifications.cancelEvent(context, event.eventId)
+                    selectedEvent = null
                     ackTarget = null
                 }
                 .onFailure { error = it.message ?: "处理失败" }
@@ -210,6 +297,27 @@ fun GuardianHomeScreen(
                         Spacer(Modifier.height(12.dp))
                     }
 
+                    if (otherAlerts.isNotEmpty()) {
+                        Text(
+                            text = "守护提醒",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        otherAlerts.forEach { (relId, events) ->
+                            val relation = relations.firstOrNull { it.relationId == relId } ?: return@forEach
+                            events.forEach { event ->
+                                EventAlertCard(
+                                    relation = relation,
+                                    event = event,
+                                    onClick = { selectedEvent = relation to event },
+                                )
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+
                     relations.forEach { relation ->
                         Card(
                             modifier = Modifier
@@ -284,6 +392,25 @@ fun GuardianHomeScreen(
                 showAddDialog = false
                 refreshKey++
             },
+        )
+    }
+
+    selectedEvent?.let { (relation, event) ->
+        EventDetailDialog(
+            relation = relation,
+            event = event,
+            busy = readBusy || ackBusy,
+            onDismiss = { selectedEvent = null },
+            onViewLocation = {
+                if (event.type == "sos_created") {
+                    selectedEvent = null
+                    onSelectRelation(relation)
+                } else {
+                    markEventRead(relation, event) { onSelectRelation(relation) }
+                }
+            },
+            onRead = { markEventRead(relation, event) },
+            onHandled = { ackSos(relation, event, "handled") },
         )
     }
 
@@ -393,6 +520,117 @@ private fun formatExpiry(expiresAt: String): String? = runCatching {
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("HH:mm"))
 }.getOrNull()
+
+@Composable
+private fun EventAlertCard(
+    relation: RelationSummary,
+    event: EventItem,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (event.level == "p1") {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+        ),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${relation.peerNickname.ifBlank { "被守护人" }} · ${eventTitle(event)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = formatEventTime(event.occurredAt),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(text = eventDescription(event), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun EventDetailDialog(
+    relation: RelationSummary,
+    event: EventItem,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onViewLocation: () -> Unit,
+    onRead: () -> Unit,
+    onHandled: () -> Unit,
+) {
+    val isSos = event.type == "sos_created"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${relation.peerNickname.ifBlank { "被守护人" }} · ${eventTitle(event)}") },
+        text = {
+            Column {
+                Text(text = eventDescription(event), style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "发生时间：${formatEventTime(event.occurredAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            if (isSos) {
+                Button(onClick = onHandled, enabled = !busy) { Text("已处理") }
+            } else {
+                TextButton(onClick = onViewLocation, enabled = !busy) { Text("查看位置") }
+            }
+        },
+        dismissButton = {
+            if (isSos) {
+                TextButton(onClick = onViewLocation, enabled = !busy) { Text("查看位置") }
+            } else {
+                TextButton(onClick = onRead, enabled = !busy) { Text("标记已读") }
+            }
+        },
+    )
+}
+
+private fun eventTitle(event: EventItem): String = when (event.type) {
+    "sos_created" -> "SOS 紧急求助"
+    "low_battery" -> "设备电量低"
+    "device_offline" -> "设备已离线"
+    "device_online" -> "设备恢复在线"
+    "location_disabled" -> "定位权限已关闭"
+    "fence_exit" -> "离开围栏"
+    "fence_enter" -> "进入围栏"
+    "reporting_paused" -> "位置共享已暂停"
+    "sos_enabled" -> "SOS 高频定位已开启"
+    else -> "守护提醒"
+}
+
+private fun eventDescription(event: EventItem): String {
+    val payload = runCatching {
+        Json.parseToJsonElement(event.payload).jsonObject
+    }.getOrNull()
+    fun field(name: String): String? = payload?.get(name)?.jsonPrimitive?.content
+    return when (event.type) {
+        "sos_created" -> "收到紧急求助，请尽快查看位置并处理。"
+        "low_battery" -> "当前电量 ${field("battery") ?: "未知"}%，请提醒对方及时充电。"
+        "device_offline" -> "已连续 ${field("offlineAfterMin") ?: "30"} 分钟未收到设备上报。"
+        "device_online" -> "已重新收到设备上报。"
+        "location_disabled" -> "定位权限被关闭，位置共享可能已中断。"
+        "fence_exit", "fence_enter" -> "围栏：${field("fenceName") ?: "未命名"}，点击查看触发位置。"
+        "reporting_paused" -> "被守护端已暂停位置上报。"
+        "sos_enabled" -> "设备已进入 30 秒高频定位模式。"
+        else -> "点击查看事件与最新位置。"
+    }
+}
 
 @Composable
 private fun SosAlertCard(

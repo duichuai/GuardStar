@@ -14,6 +14,7 @@ import com.guardstar.app.data.location.LocationQueueStore
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
 import com.guardstar.app.data.sos.SosApi
+import com.guardstar.app.service.Notifications
 
 class GuardStarApp : Application() {
 
@@ -38,6 +39,7 @@ class GuardStarApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Notifications.ensureChannels(this)
         // 高德地图隐私合规初始化：必须在任何地图 API 调用前执行。
         runCatching {
             com.amap.api.maps.MapsInitializer.updatePrivacyShow(this, true, true)

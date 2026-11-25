@@ -3,6 +3,7 @@ package com.guardstar.app.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import com.guardstar.app.data.location.LocationApi
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.relation.RelationApi
 import com.guardstar.app.data.sos.SosApi
+import com.guardstar.app.service.Notifications
 import com.guardstar.app.service.WardLocationService
 import com.guardstar.app.ui.guardian.GuardianHomeScreen
 import com.guardstar.app.ui.guardian.GuardianMapScreen
@@ -51,6 +53,8 @@ fun GuardStarApp(
     sosApi: SosApi,
     eventApi: EventApi,
     fenceApi: FenceApi,
+    pendingEvent: Notifications.EventTarget?,
+    onPendingEventHandled: () -> Unit,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -75,6 +79,15 @@ fun GuardStarApp(
         session.clear()
         navController.navigate(ROUTE_ROLE) {
             popUpTo(0) { inclusive = true }
+        }
+    }
+
+    LaunchedEffect(pendingEvent) {
+        if (pendingEvent == null) return@LaunchedEffect
+        if (session.isLoggedIn() && role == UserRole.GUARDIAN) {
+            navController.navigate(ROUTE_GUARDIAN) { launchSingleTop = true }
+        } else {
+            onPendingEventHandled()
         }
     }
 
@@ -126,6 +139,8 @@ fun GuardStarApp(
                     val nickname = Uri.encode(relation.peerNickname.ifBlank { "被守护人" })
                     navController.navigate("guardian_track/${relation.relationId}/$nickname")
                 },
+                pendingEvent = pendingEvent,
+                onPendingEventHandled = onPendingEventHandled,
                 onLogout = { logout() },
             )
         }
