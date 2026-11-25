@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-25
+
+### 修复
+
+- 设备静置时网络定位受 10 米位移限制，导致开机后长时间没有新位置上报；网络定位改为按采集间隔上报，并增加静置心跳主动获取当前位置，GPS 仍按位移节流。
+
 ## [0.1.2] - 2026-11-25
 
 ### 修复
@@ -47,7 +53,8 @@
 - 修复 `minDistance` 被覆盖、网络检测使用过时 API 的问题。
 - 修复多次启动采集服务导致的并发采集与重复上报循环。
 
-[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/duichuai/GuardStar/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/duichuai/GuardStar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/duichuai/GuardStar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/duichuai/GuardStar/releases/tag/v0.1.0

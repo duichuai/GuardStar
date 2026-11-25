@@ -15,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneOffset
@@ -50,6 +52,7 @@ class LocationCollector(
     @Volatile private var lastEmitAt: Long = 0L
     @Volatile private var stationaryCount: Int = 0
     @Volatile private var sosMode: Boolean = false
+    private var heartbeatJob: Job? = null
 
     private val listener: LocationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) = handle(location)
@@ -62,7 +65,7 @@ class LocationCollector(
                     locationManager.requestLocationUpdates(
                         provider,
                         currentIntervalMs,
-                        MIN_DISTANCE_M,
+                        minDistanceFor(provider),
                         listener,
                         handlerThread.looper,
                     )
@@ -78,9 +81,11 @@ class LocationCollector(
         currentIntervalMs = intervalMs
         register(currentIntervalMs, minDistanceM)
         emitLastKnown()
+        startHeartbeat()
     }
 
     fun stop() {
+        heartbeatJob?.cancel()
         runCatching { locationManager.removeUpdates(listener) }
         handlerThread.quitSafely()
         scope.coroutineContext[Job]?.cancel()
@@ -104,7 +109,7 @@ class LocationCollector(
                     locationManager.requestLocationUpdates(
                         provider,
                         intervalMs,
-                        minDistanceM,
+                        minDistanceFor(provider, minDistanceM),
                         listener,
                         handlerThread.looper,
                     )
@@ -112,6 +117,13 @@ class LocationCollector(
             }
         }
     }
+
+    /**
+     * 网络定位不受位移限制：设备静置时也能按采集间隔持续上报，避免开机后长时间没有新位置。
+     * GPS 仍按 10 米位移节流，降低户外静置时的功耗。
+     */
+    private fun minDistanceFor(provider: String, gpsMinDistanceM: Float = MIN_DISTANCE_M): Float =
+        if (provider == LocationManager.NETWORK_PROVIDER) 0f else gpsMinDistanceM
 
     private fun reregister(intervalMs: Long) {
         runCatching { locationManager.removeUpdates(listener) }
@@ -124,6 +136,49 @@ class LocationCollector(
             .mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }
             .maxByOrNull { it.time }
         if (best != null) handle(best, fromLastKnown = true)
+    }
+
+    /**
+     * 静置时系统可能长期不回调（尤其网络定位），定期主动请求一次当前位置，
+     * 保证服务启动后持续有新的上报，而不是只在开机后上报一个点。
+     */
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch {
+            while (isActive) {
+                delay(HEARTBEAT_TICK_MS)
+                if (System.currentTimeMillis() - lastEmitAt < currentIntervalMs) continue
+                requestFreshLocation()
+            }
+        }
+    }
+
+    private fun requestFreshLocation() {
+        val provider = when {
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
+                LocationManager.NETWORK_PROVIDER
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ->
+                LocationManager.GPS_PROVIDER
+            else -> return
+        }
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                locationManager.getCurrentLocation(provider, null, appContext.mainExecutor) { location ->
+                    location?.let { handle(it, fromLastKnown = true) }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                locationManager.requestSingleUpdate(provider, singleListener, handlerThread.looper)
+            }
+        }
+    }
+
+    private val singleListener: LocationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = handle(location, fromLastKnown = true)
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderDisabled(provider: String) = Unit
     }
 
     private fun handle(location: Location, fromLastKnown: Boolean = false) {
@@ -243,8 +298,9 @@ class LocationCollector(
         const val DEDUPE_WINDOW_MS = 10_000L
         const val LOW_BATTERY_THRESHOLD = 15
         const val LOW_BATTERY_MAX_INTERVAL_MS = 30 * 60 * 1000L
-        // 系统层 minDistance：位移小于此值时不回调，减少 CPU 唤醒与重复处理；
-        // 与去重逻辑的精度下限（10m）匹配。
+        // 心跳检查频率：无新回调时，超过采集间隔就主动请求一次当前位置。
+        const val HEARTBEAT_TICK_MS = 60 * 1000L
+        // GPS 系统层 minDistance：位移小于此值时不回调；网络定位不受此限制（见 minDistanceFor）。
         const val MIN_DISTANCE_M = 10f
     }
 }
