@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-25
+
+### 修复
+
+- 历史轨迹查询的 `from`/`to` 时间参数未做 URL 编码，带时区偏移的 `+` 被服务端解析为空格，导致返回「from 必须是 RFC3339 时间」。
+
 ## [0.1.3] - 2026-11-25
 
 ### 修复
@@ -53,7 +59,8 @@
 - 修复 `minDistance` 被覆盖、网络检测使用过时 API 的问题。
 - 修复多次启动采集服务导致的并发采集与重复上报循环。
 
-[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/duichuai/GuardStar/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/duichuai/GuardStar/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/duichuai/GuardStar/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/duichuai/GuardStar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/duichuai/GuardStar/compare/v0.1.0...v0.1.1

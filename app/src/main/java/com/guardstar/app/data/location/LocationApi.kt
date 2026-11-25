@@ -159,13 +159,16 @@ class LocationApi(private val api: ApiClient) {
         simplify: Boolean = true,
     ): TrackResult {
         val path = buildString {
-            append("/v1/relations/$relationId/locations?from=").append(from)
-            append("&to=").append(to)
+            append("/v1/relations/$relationId/locations?from=").append(enc(from))
+            append("&to=").append(enc(to))
             if (!simplify) append("&simplify=false")
             if (deviceId.isNotBlank()) append("&deviceId=").append(deviceId)
         }
         return api.get(path, TrackResult.serializer())
     }
+
+    private fun enc(value: String): String =
+        java.net.URLEncoder.encode(value, "UTF-8")
 
     /** 向被守护端下发命令（refresh / finding_mode / pause_reporting / resume_reporting）。 */
     suspend fun command(deviceId: String, type: String, durationSec: Int? = null): CommandResult =
