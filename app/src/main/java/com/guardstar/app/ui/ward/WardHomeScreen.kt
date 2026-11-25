@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.guardstar.app.core.sharing.SharingStore
 import com.guardstar.app.data.location.LocationRepository
 import com.guardstar.app.data.model.RelationSummary
 import com.guardstar.app.data.relation.RelationApi
@@ -70,6 +71,7 @@ fun WardHomeScreen(
     relationApi: RelationApi,
     locationRepository: LocationRepository,
     sosApi: SosApi,
+    sharingStore: SharingStore,
     onLogout: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -125,6 +127,7 @@ fun WardHomeScreen(
     }
 
     fun startSharing() {
+        sharingStore.setEnabled(true)
         if (!hasFineLocation || !hasNotifications) {
             baseLauncher.launch(basePermissions)
             return
@@ -135,6 +138,25 @@ fun WardHomeScreen(
         ) {
             bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         } else {
+            WardLocationService.start(context)
+        }
+    }
+
+    // 进入被守护端首页时自动恢复共享；用户主动停止过则尊重其选择，不再自动启动。
+    LaunchedEffect(Unit) {
+        if (locStatus.running || !sharingStore.isEnabled()) return@LaunchedEffect
+        val fine = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val notifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        val background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        if (fine && notifications && background) {
             WardLocationService.start(context)
         }
     }
@@ -424,7 +446,10 @@ fun WardHomeScreen(
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
-                                    onClick = { WardLocationService.stop(context) },
+                                    onClick = {
+                                        sharingStore.setEnabled(false)
+                                        WardLocationService.stop(context)
+                                    },
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text("停止共享")

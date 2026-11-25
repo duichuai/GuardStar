@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
                 GuardStarApp(
                     session = app.session,
                     roleStore = app.roleStore,
+                    sharingStore = app.sharingStore,
                     authApi = app.authApi,
                     relationApi = app.relationApi,
                     locationApi = app.locationApi,

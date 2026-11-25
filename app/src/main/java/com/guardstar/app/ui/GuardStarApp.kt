@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.role.UserRole
 import com.guardstar.app.core.session.SessionStore
+import com.guardstar.app.core.sharing.SharingStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.event.EventApi
 import com.guardstar.app.data.fence.FenceApi
@@ -46,6 +47,7 @@ private const val ROUTE_GUARDIAN_TRACK = "guardian_track/{relationId}/{wardNickn
 fun GuardStarApp(
     session: SessionStore,
     roleStore: RoleStore,
+    sharingStore: SharingStore,
     authApi: AuthApi,
     relationApi: RelationApi,
     locationApi: LocationApi,
@@ -115,6 +117,7 @@ fun GuardStarApp(
                 relationApi = relationApi,
                 locationRepository = locationRepository,
                 sosApi = sosApi,
+                sharingStore = sharingStore,
                 onLogout = { logout() },
             )
         }

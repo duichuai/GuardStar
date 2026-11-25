@@ -5,6 +5,7 @@ import android.os.PowerManager
 import com.guardstar.app.core.net.ApiClient
 import com.guardstar.app.core.role.RoleStore
 import com.guardstar.app.core.session.SessionStore
+import com.guardstar.app.core.sharing.SharingStore
 import com.guardstar.app.data.auth.AuthApi
 import com.guardstar.app.data.event.EventApi
 import com.guardstar.app.data.fence.FenceApi
@@ -21,6 +22,8 @@ class GuardStarApp : Application() {
     lateinit var session: SessionStore
         private set
     lateinit var roleStore: RoleStore
+        private set
+    lateinit var sharingStore: SharingStore
         private set
     lateinit var authApi: AuthApi
         private set
@@ -47,6 +50,7 @@ class GuardStarApp : Application() {
         }
         session = SessionStore(this)
         roleStore = RoleStore(this)
+        sharingStore = SharingStore(this)
         val api = ApiClient(session)
         authApi = AuthApi(api, session)
         relationApi = RelationApi(api, session)
